@@ -1,53 +1,54 @@
 const mineflayer = require('mineflayer')
-// Import modul pathfinder
 const { pathfinder, Movements, goals } = require('mineflayer-pathfinder')
 
 const bot = mineflayer.createBot({
-  host: 'localhost',
-  port: 25565,         // Pastikan port survival kamu benar
+  host: '127.0.0.1',
+  port: 25565,
   username: 'PioneerBot',
-  version: '1.21.11' 
+  version: '1.21.11'
 })
 
-// Pasang plugin pathfinder ke dalam bot
 bot.loadPlugin(pathfinder)
 
 bot.on('spawn', () => {
   console.log('PioneerBot mendarat dengan aman!')
-  bot.chat('Sistem Navigasi Aktif. Saya siap menjelajah!')
+  
+  // 1. Paksa bot memuat data fisika blok dari versi 1.21.1 (versi Java yang stabil)
+  const mcData = require('minecraft-data')('1.21.1')
+  
+  // 2. Terapkan data fisika tersebut ke sistem pergerakan bot
+  const defaultMove = new Movements(bot, mcData)
+  
+  // 3. Konfigurasi tambahan agar gerakannya lebih luwes
+  defaultMove.canDig = false     // Jangan menghancurkan blok (fokus jalan saja dulu)
+  defaultMove.allowParkour = true // Izinkan melompat melewati celah atau naik 1 blok
+  
+  // 4. Tanamkan pengaturan pergerakan ini ke dalam otak bot
+  bot.pathfinder.setMovements(defaultMove)
+
+  bot.chat('Sistem Navigasi & Fisika 1.21.1 Aktif. Aku bisa melompat sekarang!')
 })
 
 bot.on('chat', (username, message) => {
   if (username === bot.username) return
 
-  // Mencari data player yang mengirim chat
-  const targetPlayer = bot.players[username]?.entity
-
   if (message === 'sini') {
-    // Meminta bot memindai sekelilingnya untuk mencari fisik pemain (bukan berdasarkan nama chat)
     const targetEntity = bot.nearestEntity(entity => entity.type === 'player' && entity.username !== bot.username)
 
     if (!targetEntity) {
-      bot.chat('Aku tidak melihat fisik siapa-siapa. Coba mendekat sedikit ke jarak pandangku!')
+      bot.chat('Aku tidak melihat fisik siapa-siapa.')
       return
     }
 
-    bot.chat(`OTW menghampiri ${targetEntity.username}!`)
-    
-    const defaultMove = new Movements(bot)
-    bot.pathfinder.setMovements(defaultMove)
-    
-    // Menyuruh bot mengikuti entitas fisik yang ditemukan dengan jarak 2 blok
+    bot.chat(`OTW melompat menghampiri ${targetEntity.username}!`)
+    // Menyuruh bot mengikuti target
     bot.pathfinder.setGoal(new goals.GoalFollow(targetEntity, 2), true)
   } 
   
   else if (message === 'berhenti') {
-    // Menghapus rute navigasi agar bot diam
     bot.pathfinder.setGoal(null)
     bot.chat('Oke, aku berhenti.')
   }
 })
 
-bot.on('kicked', (reason) => console.log(`Ditendang:`, JSON.stringify(reason, null, 2)))
 bot.on('error', (err) => console.log(err))
-
