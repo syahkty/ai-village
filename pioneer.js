@@ -27,7 +27,7 @@ bot.on('death', () => {
   bot.chat('Waduh, aku mati! Mereset ulang posisiku...')
 })
 
-bot.on('chat', (username, message) => {
+bot.on('chat', async (username, message) => {
   if (username === bot.username) return
 
   if (message === 'sini') {
@@ -49,9 +49,6 @@ bot.on('chat', (username, message) => {
     bot.pathfinder.setGoal(null)
     bot.chat('Rem mendadak. Aku berhenti.')
   }
-
- bot.on('chat', async (username, message) => {
-  if (username === bot.username) return
 
   if (message === 'sini') {
     const targetPlayer = bot.players[username]
