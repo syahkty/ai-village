@@ -1,76 +1,50 @@
 const mineflayer = require('mineflayer')
+// Import modul pathfinder
+const { pathfinder, Movements, goals } = require('mineflayer-pathfinder')
 
-// Konfigurasi koneksi bot ke server
 const bot = mineflayer.createBot({
-  host: 'minecraft.syahkty.dev',   // Ganti jika server ada di IP berbeda
-  port: 25566,         // Port default Minecraft
+  host: 'localhost',
+  port: 25566,         // Pastikan port survival kamu benar
   username: 'PioneerBot',
-  version: '1.21.11' // Nama bot di dalam game
+  version: '1.21.1' 
 })
 
-// Event saat bot berhasil masuk ke dalam game
+// Pasang plugin pathfinder ke dalam bot
+bot.loadPlugin(pathfinder)
+
 bot.on('spawn', () => {
-  console.log('PioneerBot berhasil masuk ke server!')
-  bot.chat('Halo, saya PioneerBot. Saya siap menerima perintah awal.')
+  console.log('PioneerBot mendarat dengan aman!')
+  bot.chat('Sistem Navigasi Aktif. Saya siap menjelajah!')
 })
 
-// Event saat ada pesan di chat game
-bot.on('chat', async (username, message) => {
-  // Abaikan pesan dari bot itu sendiri
+bot.on('chat', (username, message) => {
   if (username === bot.username) return
 
-  if (message === 'survival') {
-    // Menyuruh bot mengetik command bawaan Velocity untuk pindah server
-    bot.chat('/server survival') 
-    console.log('Bot mencoba pindah ke server survival via command...')
-  }
+  // Mencari data player yang mengirim chat
+  const targetPlayer = bot.players[username]?.entity
 
-
-  // Perintah sederhana
-  if (message === 'maju') {
-    bot.setControlState('forward', true)
-    bot.chat('Baik, saya berjalan maju.')
-  } 
-  else if (message === 'berhenti') {
-    bot.clearControlStates() // Menghentikan semua pergerakan
-    bot.chat('Saya berhenti.')
-  }
-  else if (message === 'lompat') {
-    bot.setControlState('jump', true)
-    bot.setControlState('jump', false) // Matikan langsung agar lompat sekali
-    bot.chat('Hap!')
-  }
-})
-
-// Menangkap error agar bot tidak langsung crash
-bot.on('error', (err) => console.log(err))
-
-// Event ketika bot melihat sebuah jendela/GUI terbuka (seperti chest atau menu server)
-bot.on('windowOpen', (window) => {
-  console.log('--- MENU TERBUKA ---')
-  console.log('Bot melihat item-item berikut di dalam menu:')
-  
-  // Melakukan looping untuk melihat isi setiap slot di menu
-  window.slots.forEach((item, index) => {
-    if (item) {
-      // Menampilkan nomor slot dan nama itemnya
-      console.log(`Slot ${index}: ${item.name} (Jumlah: ${item.count})`)
+  if (message === 'sini') {
+    if (!targetPlayer) {
+      bot.chat('Aku tidak melihatmu, kamu di mana?')
+      return
     }
-  })
-  console.log('--------------------')
+
+    bot.chat('OTW (On The Way)!')
+    
+    // Memberitahu bot cara bergerak standar (bisa jalan, lari, lompat)
+    const defaultMove = new Movements(bot)
+    bot.pathfinder.setMovements(defaultMove)
+    
+    // Menyuruh bot mengikuti player (target) dengan jarak 2 blok
+    bot.pathfinder.setGoal(new goals.GoalFollow(targetPlayer, 2), true)
+  } 
   
-  // NOTE: Kita belum menyuruh bot mengklik apapun. 
-  // Kita hanya membaca nomor slotnya dulu.
+  else if (message === 'berhenti') {
+    // Menghapus rute navigasi agar bot diam
+    bot.pathfinder.setGoal(null)
+    bot.chat('Oke, aku berhenti.')
+  }
 })
 
-// Melacak jika bot sengaja ditendang (kicked) oleh server
-bot.on('kicked', (reason, loggedIn) => {
-  console.log(`--- BOT DITENDANG ---`)
-  console.log(`Alasan:`, JSON.stringify(reason, null, 2))
-})
-
-// Melacak jika koneksi bot terputus (termasuk jika server mati atau koneksi hilang)
-bot.on('end', (reason) => {
-  console.log(`--- KONEKSI TERPUTUS ---`)
-  console.log(`Alasan: ${reason}`)
-})
+bot.on('kicked', (reason) => console.log(`Ditendang:`, JSON.stringify(reason, null, 2)))
+bot.on('error', (err) => console.log(err))
