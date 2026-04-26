@@ -42,7 +42,7 @@ bot.on('chat', (username, message) => {
     }
 
     bot.chat(`Meluncur ke arah ${username}!`)
-    bot.pathfinder.setGoal(new goals.GoalFollow(targetPlayer.entity, 3), true)
+    bot.pathfinder.setGoal(new goals.GoalFollow(targetPlayer.entity, 2), true)
   } 
   
   else if (message === 'berhenti') {
