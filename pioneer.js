@@ -4,7 +4,7 @@ const { pathfinder, Movements, goals } = require('mineflayer-pathfinder')
 
 const bot = mineflayer.createBot({
   host: 'localhost',
-  port: 25567,         // Pastikan port survival kamu benar
+  port: 25565,         // Pastikan port survival kamu benar
   username: 'PioneerBot',
   version: '1.21.11' 
 })
