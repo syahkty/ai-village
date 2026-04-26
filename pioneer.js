@@ -13,36 +13,35 @@ bot.loadPlugin(pathfinder)
 bot.on('spawn', () => {
   console.log('PioneerBot mendarat dengan aman!')
   
-  // 1. Paksa bot memuat data fisika blok dari versi 1.21.1 (versi Java yang stabil)
-  const mcData = require('minecraft-data')('1.21.1')
+  // MENGGUNAKAN bot.registry (Bukan data paksaan 1.21.1)
+  // Ini memastikan bot tahu ukuran asli blok di server sehingga dia berani melompat
+  const defaultMove = new Movements(bot, bot.registry)
   
-  // 2. Terapkan data fisika tersebut ke sistem pergerakan bot
-  const defaultMove = new Movements(bot, mcData)
+  defaultMove.canDig = false     
+  defaultMove.allowParkour = true 
   
-  // 3. Konfigurasi tambahan agar gerakannya lebih luwes
-  defaultMove.canDig = false     // Jangan menghancurkan blok (fokus jalan saja dulu)
-  defaultMove.allowParkour = true // Izinkan melompat melewati celah atau naik 1 blok
-  
-  // 4. Tanamkan pengaturan pergerakan ini ke dalam otak bot
   bot.pathfinder.setMovements(defaultMove)
 
-  bot.chat('Sistem Navigasi & Fisika 1.21.1 Aktif. Aku bisa melompat sekarang!')
+  bot.chat('Sistem Navigasi & Registry Aktif. Aku siap melompat!')
 })
 
 bot.on('chat', (username, message) => {
   if (username === bot.username) return
 
   if (message === 'sini') {
-    const targetEntity = bot.nearestEntity(entity => entity.type === 'player' && entity.username !== bot.username)
+    // MENDETEKSI DARI DAFTAR PEMAIN (Sangat Akurat untuk Java & Bedrock)
+    const targetPlayer = bot.players[username]
 
-    if (!targetEntity) {
-      bot.chat('Aku tidak melihat fisik siapa-siapa.')
+    // Memeriksa apakah pemain ada dan fisik (entity)-nya sudah ter-render di dekat bot
+    if (!targetPlayer || !targetPlayer.entity) {
+      bot.chat('Aku tahu kamu ada di server, tapi fisikmu tidak terlihat. Coba mendekat!')
       return
     }
 
-    bot.chat(`OTW melompat menghampiri ${targetEntity.username}!`)
-    // Menyuruh bot mengikuti target
-    bot.pathfinder.setGoal(new goals.GoalFollow(targetEntity, 2), true)
+    bot.chat(`OTW melompat menghampiri ${username}!`)
+    
+    // Menyuruh bot mengikuti target fisik tersebut
+    bot.pathfinder.setGoal(new goals.GoalFollow(targetPlayer.entity, 2), true)
   } 
   
   else if (message === 'berhenti') {
