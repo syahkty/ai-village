@@ -48,3 +48,4 @@ bot.on('chat', (username, message) => {
 
 bot.on('kicked', (reason) => console.log(`Ditendang:`, JSON.stringify(reason, null, 2)))
 bot.on('error', (err) => console.log(err))
+
