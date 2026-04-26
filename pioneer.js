@@ -3,7 +3,7 @@ const mineflayer = require('mineflayer')
 // Konfigurasi koneksi bot ke server
 const bot = mineflayer.createBot({
   host: 'minecraft.syahkty.dev',   // Ganti jika server ada di IP berbeda
-  port: 25565,         // Port default Minecraft
+  port: 25566,         // Port default Minecraft
   username: 'PioneerBot',
   version: '1.21.11' // Nama bot di dalam game
 })
