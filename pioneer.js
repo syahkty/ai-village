@@ -24,19 +24,21 @@ bot.on('chat', (username, message) => {
   const targetPlayer = bot.players[username]?.entity
 
   if (message === 'sini') {
-    if (!targetPlayer) {
-      bot.chat('Aku tidak melihatmu, kamu di mana?')
+    // Meminta bot memindai sekelilingnya untuk mencari fisik pemain (bukan berdasarkan nama chat)
+    const targetEntity = bot.nearestEntity(entity => entity.type === 'player' && entity.username !== bot.username)
+
+    if (!targetEntity) {
+      bot.chat('Aku tidak melihat fisik siapa-siapa. Coba mendekat sedikit ke jarak pandangku!')
       return
     }
 
-    bot.chat('OTW (On The Way)!')
+    bot.chat(`OTW menghampiri ${targetEntity.username}!`)
     
-    // Memberitahu bot cara bergerak standar (bisa jalan, lari, lompat)
     const defaultMove = new Movements(bot)
     bot.pathfinder.setMovements(defaultMove)
     
-    // Menyuruh bot mengikuti player (target) dengan jarak 2 blok
-    bot.pathfinder.setGoal(new goals.GoalFollow(targetPlayer, 2), true)
+    // Menyuruh bot mengikuti entitas fisik yang ditemukan dengan jarak 2 blok
+    bot.pathfinder.setGoal(new goals.GoalFollow(targetEntity, 2), true)
   } 
   
   else if (message === 'berhenti') {
