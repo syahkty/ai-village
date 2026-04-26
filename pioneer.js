@@ -6,7 +6,7 @@ const bot = mineflayer.createBot({
   host: 'localhost',
   port: 25566,         // Pastikan port survival kamu benar
   username: 'PioneerBot',
-  version: '1.21.1' 
+  version: '1.21.11' 
 })
 
 // Pasang plugin pathfinder ke dalam bot
