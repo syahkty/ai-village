@@ -4,8 +4,7 @@ const { pathfinder, Movements, goals } = require('mineflayer-pathfinder')
 const bot = mineflayer.createBot({
   host: '127.0.0.1',
   port: 25565,
-  username: 'PioneerBot',
-  version: '1.21.11'
+  username: 'PioneerBot'
 })
 
 bot.loadPlugin(pathfinder)
@@ -13,40 +12,42 @@ bot.loadPlugin(pathfinder)
 bot.on('spawn', () => {
   console.log('PioneerBot mendarat dengan aman!')
   
-  // MENGGUNAKAN bot.registry (Bukan data paksaan 1.21.1)
-  // Ini memastikan bot tahu ukuran asli blok di server sehingga dia berani melompat
   const defaultMove = new Movements(bot, bot.registry)
-  
   defaultMove.canDig = false     
   defaultMove.allowParkour = true 
   
   bot.pathfinder.setMovements(defaultMove)
+  bot.chat('Sistem Navigasi Aktif. Aku siap menjelajah!')
+})
 
-  bot.chat('Sistem Navigasi & Registry Aktif. Aku siap melompat!')
+// === SISTEM BARU: MENDETEKSI KEMATIAN ===
+bot.on('death', () => {
+  console.log('Bot mati. Mereset sistem navigasi...')
+  bot.pathfinder.setGoal(null) // Membersihkan memori rute agar tidak error
+  bot.chat('Waduh, aku mati! Mereset ulang posisiku...')
 })
 
 bot.on('chat', (username, message) => {
   if (username === bot.username) return
 
   if (message === 'sini') {
-    // MENDETEKSI DARI DAFTAR PEMAIN (Sangat Akurat untuk Java & Bedrock)
     const targetPlayer = bot.players[username]
 
-    // Memeriksa apakah pemain ada dan fisik (entity)-nya sudah ter-render di dekat bot
+    // Jika fisik pemain tidak terdeteksi (karena kejauhan)
     if (!targetPlayer || !targetPlayer.entity) {
-      bot.chat('Aku tahu kamu ada di server, tapi fisikmu tidak terlihat. Coba mendekat!')
+      // Bot akan memeriksa posisi koordinatnya sendiri saat ini
+      const pos = bot.entity.position
+      bot.chat(`Aku tidak melihatmu dari sini. Aku tersesat di koordinat X: ${Math.round(pos.x)}, Y: ${Math.round(pos.y)}, Z: ${Math.round(pos.z)}. Tolong jemput!`)
       return
     }
 
-    bot.chat(`OTW melompat menghampiri ${username}!`)
-    
-    // Menyuruh bot mengikuti target fisik tersebut
+    bot.chat(`Meluncur ke arah ${username}!`)
     bot.pathfinder.setGoal(new goals.GoalFollow(targetPlayer.entity, 2), true)
   } 
   
   else if (message === 'berhenti') {
     bot.pathfinder.setGoal(null)
-    bot.chat('Oke, aku berhenti.')
+    bot.chat('Rem mendadak. Aku berhenti.')
   }
 })
 
