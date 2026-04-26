@@ -49,6 +49,59 @@ bot.on('chat', (username, message) => {
     bot.pathfinder.setGoal(null)
     bot.chat('Rem mendadak. Aku berhenti.')
   }
+
+ bot.on('chat', async (username, message) => {
+  if (username === bot.username) return
+
+  if (message === 'sini') {
+    const targetPlayer = bot.players[username]
+    if (!targetPlayer || !targetPlayer.entity) {
+      bot.chat('Aku tidak melihat fisikmu. Coba mendekat!')
+      return
+    }
+    bot.chat(`Meluncur ke arah ${username}!`)
+    bot.pathfinder.setGoal(new goals.GoalFollow(targetPlayer.entity, 2), true)
+  } 
+  
+  else if (message === 'berhenti') {
+    bot.pathfinder.setGoal(null)
+    bot.chat('Rem mendadak. Aku berhenti.')
+  }
+
+  // === FITUR BARU: MENEBANG POHON ===
+  else if (message === 'tebang') {
+    bot.chat('Memindai pohon terdekat...')
+
+    // 1. Mencari blok kayu (log) dalam radius 32 blok
+    const targetBlock = bot.findBlock({
+      matching: (block) => block.name.includes('log'), // Mencari apa saja yang namanya mengandung 'log' (oak_log, birch_log, dll)
+      maxDistance: 32
+    })
+
+    if (!targetBlock) {
+      bot.chat('Tidak ada pohon di sekitarku (radius 32 blok).')
+      return
+    }
+
+    bot.chat(`Ketemu kayu di koordinat X: ${targetBlock.position.x}, Z: ${targetBlock.position.z}. OTW tebang!`)
+
+    try {
+      // 2. Berjalan mendekati pohon (berhenti pada jarak 1 blok agar bisa memukul)
+      const x = targetBlock.position.x
+      const y = targetBlock.position.y
+      const z = targetBlock.position.z
+      await bot.pathfinder.goto(new goals.GoalNear(x, y, z, 1))
+
+      // 3. Mulai memukul/menebang blok tersebut
+      bot.chat('Mulai menebang! (Pakai tangan kosong agak lama ya...)')
+      await bot.dig(targetBlock)
+      
+      bot.chat('Selesai! Kayunya sudah hancur.')
+    } catch (err) {
+      bot.chat('Duh, aku nyangkut atau pohonnya di luar jangkauanku.')
+      console.log(err)
+    }
+  }
 })
 
 bot.on('error', (err) => console.log(err))
