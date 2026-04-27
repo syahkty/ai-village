@@ -190,51 +190,74 @@ bot.on('chat', async (username, message) => {
 })
 
 // ====================================================================
-// === SARAF REFLEKS PARKOUR ULTIMATE V3 (Anti-Spam & Jarak Aman) ===
+// === SISTEM MONITORING ANTI-STUCK (Penyelamat Pathfinder) ===
 // ====================================================================
-let isDoingParkour = false;
-let terakhirParkour = 0; // Memori untuk menghitung cooldown
+let posisiTerakhir = null;
+let waktuMacet = 0;
+let sedangPenyelamatan = false;
 
 bot.on('physicsTick', async () => {
-  const sekarang = Date.now();
-  
-  // Syarat baru: Hanya boleh parkour jika sudah lewat 1.5 detik dari parkour terakhir!
-  if (bot.pathfinder.goal && bot.entity.isCollidedHorizontally && bot.entity.onGround && !isDoingParkour && (sekarang - terakhirParkour > 1500)) {
+  // Hanya aktif jika bot punya tujuan jalan, dan tidak sedang diselamatkan
+  if (bot.pathfinder.goal && !sedangPenyelamatan) {
     
-    isDoingParkour = true;
-    terakhirParkour = sekarang; // Catat waktu parkour saat ini
+    const posisiSekarang = bot.entity.position.clone();
     
-    // 1. CULIK OTAK PATHFINDER
-    const tujuanSementara = bot.pathfinder.goal;
-    bot.pathfinder.setGoal(null); 
-    bot.clearControlStates();
+    if (posisiTerakhir) {
+      // Hitung jarak pergerakan bot dalam 1 tick (seperduapuluh detik)
+      const jarakGerak = posisiSekarang.distanceTo(posisiTerakhir);
+      
+      // Jika jarak geraknya hampir 0 (berarti dia stuck/jalan di tempat nyundul tembok)
+      if (jarakGerak < 0.05) {
+        waktuMacet++; // Tambah hitungan macet
+      } else {
+        waktuMacet = 0; // Kalau dia lancar jalan, reset hitungan
+      }
+    }
+    
+    posisiTerakhir = posisiSekarang;
 
-    // 2. AMBIL ANCANG-ANCANG YANG BENAR
-    // Mundur selama 150ms (WAJIB agak lama agar fisiknya benar-benar lepas dari tembok)
-    bot.setControlState('back', true);
-    await new Promise(resolve => setTimeout(resolve, 150)); 
-    bot.setControlState('back', false);
-    
-    // Jeda keseimbangan
-    await new Promise(resolve => setTimeout(resolve, 50));
-
-    // 3. EKSEKUSI PARKOUR SAKTY
-    bot.setControlState('jump', true);
-    await new Promise(resolve => setTimeout(resolve, 50)); // Angkat badan
-    
-    bot.setControlState('forward', true); 
-    await new Promise(resolve => setTimeout(resolve, 300)); // Terbang ke depan (agak dipanjangkan)
-    
-    bot.setControlState('jump', false); 
-    await new Promise(resolve => setTimeout(resolve, 200)); // Mendarat
-    
-    bot.setControlState('forward', false); 
-    
-    // 4. KEMBALIKAN OTAK PATHFINDER
-    bot.pathfinder.setGoal(tujuanSementara);
-    
-    isDoingParkour = false;
+    // JIKA BOT MACET SELAMA 20 TICK (1 Detik Penuh)
+    if (waktuMacet > 20) {
+      sedangPenyelamatan = true;
+      bot.chat('Waduh, Pathfinder-ku stuck! Aktifkan Auto-Parkour...');
+      
+      // 1. Simpan dan matikan otak Pathfinder
+      const tujuanBos = bot.pathfinder.goal;
+      bot.pathfinder.setGoal(null);
+      bot.clearControlStates();
+      
+      // 2. LAKUKAN PARKOUR SAKTY
+      // Mundur yang agak jauh (200ms) agar benar-benar lepas dari gesekan tembok
+      bot.setControlState('back', true);
+      await new Promise(resolve => setTimeout(resolve, 200)); 
+      bot.setControlState('back', false);
+      
+      await new Promise(resolve => setTimeout(resolve, 100)); // Jeda keseimbangan
+      
+      bot.setControlState('jump', true);
+      await new Promise(resolve => setTimeout(resolve, 50)); 
+      
+      bot.setControlState('forward', true); 
+      await new Promise(resolve => setTimeout(resolve, 300)); // Terbang ke depan
+      
+      bot.setControlState('jump', false); 
+      await new Promise(resolve => setTimeout(resolve, 200)); // Mendarat
+      
+      bot.clearControlStates(); // Bersihkan semua tombol
+      
+      // 3. Kembalikan otak Pathfinder untuk lanjut jalan
+      bot.pathfinder.setGoal(tujuanBos);
+      
+      // Reset status agar sistem monitor berjalan normal lagi
+      waktuMacet = 0;
+      sedangPenyelamatan = false;
+    }
+  } 
+  // Jika bot sedang tidak disuruh apa-apa (diam)
+  else if (!bot.pathfinder.goal) {
+    posisiTerakhir = null;
+    waktuMacet = 0;
   }
-})
+});
 
 bot.on('error', (err) => console.log(err))
