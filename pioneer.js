@@ -190,46 +190,47 @@ bot.on('chat', async (username, message) => {
 })
 
 // ====================================================================
-// === SARAF REFLEKS PARKOUR ULTIMATE V2 (Bypass Pathfinder) ===
+// === SARAF REFLEKS PARKOUR ULTIMATE V3 (Anti-Spam & Jarak Aman) ===
 // ====================================================================
 let isDoingParkour = false;
+let terakhirParkour = 0; // Memori untuk menghitung cooldown
 
 bot.on('physicsTick', async () => {
-  // Syarat: Sedang ada tujuan, nabrak tembok, di tanah, dan tidak sedang parkour manual
-  if (bot.pathfinder.goal && bot.entity.isCollidedHorizontally && bot.entity.onGround && !isDoingParkour) {
+  const sekarang = Date.now();
+  
+  // Syarat baru: Hanya boleh parkour jika sudah lewat 1.5 detik dari parkour terakhir!
+  if (bot.pathfinder.goal && bot.entity.isCollidedHorizontally && bot.entity.onGround && !isDoingParkour && (sekarang - terakhirParkour > 1500)) {
     
     isDoingParkour = true;
+    terakhirParkour = sekarang; // Catat waktu parkour saat ini
     
     // 1. CULIK OTAK PATHFINDER
-    // Simpan tujuan bos ke memori sementara
     const tujuanSementara = bot.pathfinder.goal;
-    // Matikan pathfinder agar dia berhenti menekan tombol 'Maju'
     bot.pathfinder.setGoal(null); 
-    
-    // Pastikan semua tombol bersih dari sisa-sisa pathfinder
     bot.clearControlStates();
 
-    // 2. EKSEKUSI PARKOUR SAKTY (Tanpa gangguan!)
-    bot.chat('Bypass aktif! Parkour manual...');
+    // 2. AMBIL ANCANG-ANCANG YANG BENAR
+    // Mundur selama 150ms (WAJIB agak lama agar fisiknya benar-benar lepas dari tembok)
     bot.setControlState('back', true);
-    await new Promise(resolve => setTimeout(resolve, 50)); 
+    await new Promise(resolve => setTimeout(resolve, 150)); 
     bot.setControlState('back', false);
     
+    // Jeda keseimbangan
     await new Promise(resolve => setTimeout(resolve, 50));
 
+    // 3. EKSEKUSI PARKOUR SAKTY
     bot.setControlState('jump', true);
-    await new Promise(resolve => setTimeout(resolve, 50)); 
+    await new Promise(resolve => setTimeout(resolve, 50)); // Angkat badan
     
     bot.setControlState('forward', true); 
-    await new Promise(resolve => setTimeout(resolve, 250)); 
+    await new Promise(resolve => setTimeout(resolve, 300)); // Terbang ke depan (agak dipanjangkan)
     
     bot.setControlState('jump', false); 
-    await new Promise(resolve => setTimeout(resolve, 300)); 
+    await new Promise(resolve => setTimeout(resolve, 200)); // Mendarat
     
     bot.setControlState('forward', false); 
     
-    // 3. KEMBALIKAN OTAK PATHFINDER
-    // Berikan lagi tujuan awalnya agar dia lanjut jalan mencari Bos/Pohon
+    // 4. KEMBALIKAN OTAK PATHFINDER
     bot.pathfinder.setGoal(tujuanSementara);
     
     isDoingParkour = false;
