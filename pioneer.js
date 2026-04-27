@@ -23,13 +23,9 @@ bot.on('spawn', () => {
   defaultMove.allowParkour = true 
   
   // TWEAK 1: Matikan fitur lari (Sprint). 
-  // Bot akan jalan santai. Ini memberi otaknya cukup waktu untuk 
-  // mendeteksi blok di depan dan melompat tanpa menabrak duluan.
   defaultMove.allowSprints = true 
   
   // TWEAK 2: Atur batas berani turun (Max Drop).
-  // Kadang bot ragu melompat turun kalau medannya berundak. 
-  // Kita set agar dia berani lompat turun maksimal 3 blok (biar gak mati kena fall damage).
   defaultMove.maxDropDown = 3      
   
   bot.pathfinder.setMovements(defaultMove)
@@ -67,92 +63,73 @@ bot.on('chat', async (username, message) => {
   // === FITUR TES LOMPAT MANUAL ===
   else if (message === 'lompat') {
     bot.chat('Hiaaa! (Tes lompat di tempat)');
-    
-    // Tekan tombol spasi
     bot.setControlState('jump', true);
-    
-    // Tahan spasi selama 300 milidetik (waktu standar Minecraft untuk lompatan penuh)
     setTimeout(() => {
-      // Lepas tombol spasi
       bot.setControlState('jump', false);
     }, 300);
   }
 
-  // === FITUR TES LOMPAT SAMBIL MAJU ===
-  // === FITUR TES LOMPAT MAJU (Dengan Ancang-ancang Otomatis) ===
   // === FITUR TES LOMPAT MAJU (Auto-Positioning Sempurna) ===
   else if (message === 'lompat maju') {
     bot.chat('Menganalisis jarak... Mencari posisi parkour ideal.');
     
-    // 1. Kunci pandangan ke arah Bos
     const target = bot.players[username]?.entity;
     if (target) {
       await bot.lookAt(target.position.offset(0, 1.5, 0));
     }
 
-    // 2. PENYESUAIAN JARAK (Jika terlalu jauh)
-    // Kalau tidak nempel tembok, berarti terlalu jauh. Maju dulu!
     if (!bot.entity.isCollidedHorizontally) {
       bot.chat('Terlalu jauh. Aku jalan maju dulu sampai ketemu bloknya...');
       bot.setControlState('forward', true);
       
       let waktuPencarian = 0;
-      // Loop: Tunggu sampai bot menabrak tembok (Maksimal 3 detik agar tidak bablas)
       while (!bot.entity.isCollidedHorizontally && waktuPencarian < 60) {
-        await new Promise(resolve => setTimeout(resolve, 50)); // Cek sensor setiap 50 milidetik
+        await new Promise(resolve => setTimeout(resolve, 50)); 
         waktuPencarian++;
       }
-      // Begitu nempel, langsung rem!
       bot.setControlState('forward', false);
     }
 
-    // 3. AMBIL ANCANG-ANCANG (Mundur selangkah dari tembok)
-    // (Di tahap ini bot dipastikan sudah menempel di tembok berkat langkah 2)
     bot.chat('Nempel tembok! Mundur dikit buat ambil ancang-ancang...');
     bot.setControlState('back', true);
-    await new Promise(resolve => setTimeout(resolve, 50)); // Mundur presisi 200ms
+    await new Promise(resolve => setTimeout(resolve, 50)); 
     bot.setControlState('back', false);
     
-    // Jeda sebentar menstabilkan keseimbangan fisik
     await new Promise(resolve => setTimeout(resolve, 50));
 
-    // 4. EKSEKUSI PARKOUR PRO
     bot.setControlState('jump', true);
-    await new Promise(resolve => setTimeout(resolve, 50)); // Angkat badan
+    await new Promise(resolve => setTimeout(resolve, 50)); 
     
     bot.setControlState('forward', true); 
-    await new Promise(resolve => setTimeout(resolve, 250)); // Terbang ke depan
+    await new Promise(resolve => setTimeout(resolve, 250)); 
     
     bot.setControlState('jump', false); 
-    await new Promise(resolve => setTimeout(resolve, 300)); // Mendarat
+    await new Promise(resolve => setTimeout(resolve, 300)); 
     
-    bot.setControlState('forward', false); // Rem total
+    bot.setControlState('forward', false); 
     bot.chat('Hap! Parkour berhasil dari jarak mana pun.');
   }
 
-  // === FITUR KONFIRMASI (BARU) ===
+  // === FITUR KONFIRMASI ===
   else if (message === 'menerima kayu') {
-    bot.pathfinder.setGoal(null) // Menghentikan gerakan bot sepenuhnya
-    isWorking = false            // Memastikan bot siap kerja lagi
+    bot.pathfinder.setGoal(null) 
+    isWorking = false            
     bot.chat('Sama-sama, Bos! Tugas telah selesai dan sistem di-reset. Ketik "tebang" lagi jika ingin aku mencari pohon dari awal.')
   }
 
   // === FITUR MENEBANG & MENGANTAR KAYU ===
   else if (message === 'tebang') {
-    // Mengecek apakah bot masih ngerjain tugas sebelumnya
     if (isWorking) {
       bot.chat('Sabar Bos, aku masih ngerjain tugas sebelumnya! Ketik "berhenti" kalau mau membatalkan.')
       return
     }
 
-    // Mengunci status bot menjadi "Sedang Bekerja"
     isWorking = true 
     bot.chat('Siap laksanakan! Mulai mencari pohon dari awal...')
     
     let isChopping = true
 
     try {
-      // 1. Proses Menebang
       while (isChopping) {
         const targetBlock = bot.findBlock({
           matching: (block) => block.name.includes('log'),
@@ -179,11 +156,9 @@ bot.on('chat', async (username, message) => {
         }
       }
 
-      // 2. Memungut Barang
       bot.chat('Tunggu sebentar, aku memungut kayunya yang jatuh...')
       await new Promise(resolve => setTimeout(resolve, 1500))
 
-      // 3. Mencari Bos dan Mengantar Barang
       const targetPlayer = bot.players[username]?.entity
       if (targetPlayer) {
         bot.chat(`OTW mengantar kayu ke ${username}!`)
@@ -197,11 +172,9 @@ bot.on('chat', async (username, message) => {
           for (const log of logs) {
             await bot.tossStack(log) 
           }
-          // Mengingatkan Bos untuk konfirmasi
           bot.chat('Ini hasil tebangannya, Bos! Tolong ketik "menerima kayu" untuk menyelesaikan tugas ini.')
         } else {
           bot.chat('Maaf Bos, kayunya tidak masuk ke inventory-ku (mungkin jatuh ke tempat yang tidak bisa kuambil).')
-          // Tetap ingatkan konfirmasi kalau gagal ambil
           bot.chat('Ketik "menerima kayu" agar aku bisa reset tugas.')
         }
       } else {
@@ -211,10 +184,47 @@ bot.on('chat', async (username, message) => {
       bot.chat('Duh, aku nyangkut di jalan.')
       console.log(error)
     } finally {
-      // Menandai proses penebangan sudah selesai secara sistem
-      // (Namun bot tetap akan diam menunggu bos mengetik "menerima kayu")
       isWorking = false 
     }
+  }
+})
+
+// ====================================================================
+// === SARAF REFLEKS PARKOUR ULTIMATE (Tuning Sakty) ===
+// ====================================================================
+let isDoingParkour = false;
+
+bot.on('physicsTick', async () => {
+  // Syarat: Sedang ada tujuan (Pathfinder jalan), nabrak tembok, di tanah, dan tidak sedang lompat manual
+  if (bot.pathfinder.goal && bot.entity.isCollidedHorizontally && bot.entity.onGround && !isDoingParkour) {
+    
+    isDoingParkour = true;
+    
+    // Hapus sementara tombol W dari Pathfinder agar tidak bentrok dengan manuver kita
+    bot.clearControlStates();
+
+    // 1. Ambil Ancang-ancang (Mundur)
+    bot.setControlState('back', true);
+    await new Promise(resolve => setTimeout(resolve, 50)); 
+    bot.setControlState('back', false);
+    
+    // Jeda keseimbangan
+    await new Promise(resolve => setTimeout(resolve, 50));
+
+    // 2. Eksekusi Lompat + Maju
+    bot.setControlState('jump', true);
+    await new Promise(resolve => setTimeout(resolve, 50)); 
+    
+    bot.setControlState('forward', true); 
+    await new Promise(resolve => setTimeout(resolve, 250)); 
+    
+    bot.setControlState('jump', false); 
+    await new Promise(resolve => setTimeout(resolve, 300)); 
+    
+    // Kembalikan kendali ke Pathfinder
+    bot.setControlState('forward', false); 
+    
+    isDoingParkour = false;
   }
 })
 
