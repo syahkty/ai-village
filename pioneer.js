@@ -79,25 +79,46 @@ bot.on('chat', async (username, message) => {
   }
 
   // === FITUR TES LOMPAT SAMBIL MAJU ===
+  // === FITUR TES LOMPAT MAJU (Dengan Ancang-ancang Otomatis) ===
   else if (message === 'lompat maju') {
-    bot.chat('Parkour mode on! Hiaaa!');
+    bot.chat('Menganalisis jarak rintangan di depan...');
     
-    // 1. Tekan tombol maju dan lompat bersamaan
-    bot.setControlState('forward', true);
+    // 1. Kunci pandangan ke arahmu agar arah "depan/belakang"-nya presisi
+    const target = bot.players[username]?.entity;
+    if (target) {
+      await bot.lookAt(target.position.offset(0, 1.5, 0));
+    }
+
+    // 2. PENGECEKAN BLOK: Apakah bot terlalu nempel dengan tembok?
+    // bot.entity.isCollidedHorizontally adalah sensor tabrakan bawaan bot
+    if (bot.entity.isCollidedHorizontally) {
+      bot.chat('Terlalu dekat dengan blok! Mundur dikit buat ambil ancang-ancang...');
+      
+      // Tekan tombol mundur (S)
+      bot.setControlState('back', true);
+      
+      // Mundur selama 200 milidetik (sekitar 1-2 langkah mundur)
+      await new Promise(resolve => setTimeout(resolve, 200));
+      
+      // Rem (Lepas tombol mundur)
+      bot.setControlState('back', false);
+      
+      // Beri jeda sebentar agar otaknya menstabilkan posisi
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+
+    // 3. EKSEKUSI PARKOUR (Jarak sudah aman, gesekan tembok hilang)
     bot.setControlState('jump', true);
+    await new Promise(resolve => setTimeout(resolve, 50)); // Lompat dulu
     
-    // 2. Lepas tombol lompat setelah 300ms (saat berada di puncak lompatan)
-    setTimeout(() => {
-      bot.setControlState('jump', false);
-      
-      // 3. TETAP MAJU selama 500ms lagi agar tubuhnya masuk ke atas blok
-      setTimeout(() => {
-        // Lepas tombol maju, bot berhenti bergerak
-        bot.setControlState('forward', false);
-        bot.chat('Mendarat!');
-      }, 500); 
-      
-    }, 300);
+    bot.setControlState('forward', true); // Baru maju
+    await new Promise(resolve => setTimeout(resolve, 250)); // Terbang ke depan
+    
+    bot.setControlState('jump', false); // Lepas spasi
+    await new Promise(resolve => setTimeout(resolve, 300)); // Proses mendarat di atas
+    
+    bot.setControlState('forward', false); // Lepas W
+    bot.chat('Hap! Mendarat dengan mulus.');
   }
 
   // === FITUR KONFIRMASI (BARU) ===
