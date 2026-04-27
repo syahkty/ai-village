@@ -25,7 +25,7 @@ bot.on('spawn', () => {
   // TWEAK 1: Matikan fitur lari (Sprint). 
   // Bot akan jalan santai. Ini memberi otaknya cukup waktu untuk 
   // mendeteksi blok di depan dan melompat tanpa menabrak duluan.
-  defaultMove.allowSprints = false 
+  defaultMove.allowSprints = true 
   
   // TWEAK 2: Atur batas berani turun (Max Drop).
   // Kadang bot ragu melompat turun kalau medannya berundak. 
@@ -149,6 +149,18 @@ bot.on('chat', async (username, message) => {
       // (Namun bot tetap akan diam menunggu bos mengetik "menerima kayu")
       isWorking = false 
     }
+  }
+})
+// === KLINIK FISIOTERAPI: SARAF REFLEKS AUTO-JUMP ===
+// physicsTick berjalan 20 kali per detik (setiap tick server Minecraft)
+bot.on('physicsTick', () => {
+  // Jika pathfinder sedang menekan tombol 'maju' DAN tubuh bot menabrak tembok horizontal
+  if (bot.controlState.forward && bot.entity.isCollidedHorizontally) {
+    bot.setControlState('jump', true) // Paksa otot kaki melompat!
+  } 
+  // Jika sudah lolos dari rintangan tapi tombol lompat masih tertahan
+  else if (bot.controlState.jump && !bot.entity.isCollidedHorizontally) {
+    bot.setControlState('jump', false) // Lepas tombol lompat agar tidak loncat-loncat terus
   }
 })
 
