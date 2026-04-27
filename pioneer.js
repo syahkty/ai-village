@@ -190,28 +190,33 @@ bot.on('chat', async (username, message) => {
 })
 
 // ====================================================================
-// === SARAF REFLEKS PARKOUR ULTIMATE (Tuning Sakty) ===
+// === SARAF REFLEKS PARKOUR ULTIMATE V2 (Bypass Pathfinder) ===
 // ====================================================================
 let isDoingParkour = false;
 
 bot.on('physicsTick', async () => {
-  // Syarat: Sedang ada tujuan (Pathfinder jalan), nabrak tembok, di tanah, dan tidak sedang lompat manual
+  // Syarat: Sedang ada tujuan, nabrak tembok, di tanah, dan tidak sedang parkour manual
   if (bot.pathfinder.goal && bot.entity.isCollidedHorizontally && bot.entity.onGround && !isDoingParkour) {
     
     isDoingParkour = true;
     
-    // Hapus sementara tombol W dari Pathfinder agar tidak bentrok dengan manuver kita
+    // 1. CULIK OTAK PATHFINDER
+    // Simpan tujuan bos ke memori sementara
+    const tujuanSementara = bot.pathfinder.goal;
+    // Matikan pathfinder agar dia berhenti menekan tombol 'Maju'
+    bot.pathfinder.setGoal(null); 
+    
+    // Pastikan semua tombol bersih dari sisa-sisa pathfinder
     bot.clearControlStates();
 
-    // 1. Ambil Ancang-ancang (Mundur)
+    // 2. EKSEKUSI PARKOUR SAKTY (Tanpa gangguan!)
+    bot.chat('Bypass aktif! Parkour manual...');
     bot.setControlState('back', true);
     await new Promise(resolve => setTimeout(resolve, 50)); 
     bot.setControlState('back', false);
     
-    // Jeda keseimbangan
     await new Promise(resolve => setTimeout(resolve, 50));
 
-    // 2. Eksekusi Lompat + Maju
     bot.setControlState('jump', true);
     await new Promise(resolve => setTimeout(resolve, 50)); 
     
@@ -221,8 +226,11 @@ bot.on('physicsTick', async () => {
     bot.setControlState('jump', false); 
     await new Promise(resolve => setTimeout(resolve, 300)); 
     
-    // Kembalikan kendali ke Pathfinder
     bot.setControlState('forward', false); 
+    
+    // 3. KEMBALIKAN OTAK PATHFINDER
+    // Berikan lagi tujuan awalnya agar dia lanjut jalan mencari Bos/Pohon
+    bot.pathfinder.setGoal(tujuanSementara);
     
     isDoingParkour = false;
   }
