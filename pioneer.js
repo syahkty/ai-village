@@ -153,14 +153,23 @@ bot.on('chat', async (username, message) => {
 })
 // === KLINIK FISIOTERAPI: SARAF REFLEKS AUTO-JUMP ===
 // physicsTick berjalan 20 kali per detik (setiap tick server Minecraft)
+// === KLINIK FISIOTERAPI: LOMPAT BARBAR (Logika Sakty) ===
 bot.on('physicsTick', () => {
-  // Jika pathfinder sedang menekan tombol 'maju' DAN tubuh bot menabrak tembok horizontal
-  if (bot.controlState.forward && bot.entity.isCollidedHorizontally) {
-    bot.setControlState('jump', true) // Paksa otot kaki melompat!
-  } 
-  // Jika sudah lolos dari rintangan tapi tombol lompat masih tertahan
-  else if (bot.controlState.jump && !bot.entity.isCollidedHorizontally) {
-    bot.setControlState('jump', false) // Lepas tombol lompat agar tidak loncat-loncat terus
+  // Hanya jalankan refleks ini kalau bot sedang disuruh jalan (punya tujuan)
+  if (bot.pathfinder.goal) {
+    
+    // Jika fisik bot menabrak tembok horizontal (mentok blok)
+    if (bot.entity.isCollidedHorizontally) {
+      // Ambil alih kendali: Paksa MAJU dan LOMPAT sekaligus!
+      bot.setControlState('jump', true)
+      bot.setControlState('forward', true)
+    } 
+    // Jika sudah di udara/melewati blok (tidak mentok lagi)
+    else {
+      // Lepaskan tombol lompat agar tidak loncat-loncat tidak jelas
+      bot.setControlState('jump', false)
+      // Catatan: Tombol 'maju' tidak kita false-kan agar pathfinder bisa melanjutkannya
+    }
   }
 })
 
