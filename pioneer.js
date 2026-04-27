@@ -10,7 +10,6 @@ const bot = mineflayer.createBot({
 bot.loadPlugin(pathfinder)
 
 // === SISTEM STATUS KERJA ===
-// Variabel ini mencegah bot kebingungan jika disuruh tebang berkali-kali secara bersamaan
 let isWorking = false 
 
 bot.on('spawn', () => {
@@ -18,14 +17,9 @@ bot.on('spawn', () => {
   
   const defaultMove = new Movements(bot, bot.registry)
   
-  // === KLINIK FISIOTERAPI: TWEAK OTOT KAKI ===
   defaultMove.canDig = false     
   defaultMove.allowParkour = true 
-  
-  // TWEAK 1: Matikan fitur lari (Sprint). 
   defaultMove.allowSprints = true 
-  
-  // TWEAK 2: Atur batas berani turun (Max Drop).
   defaultMove.maxDropDown = 3      
   
   bot.pathfinder.setMovements(defaultMove)
@@ -35,7 +29,7 @@ bot.on('spawn', () => {
 bot.on('death', () => {
   console.log('Bot mati. Mereset sistem...')
   bot.pathfinder.setGoal(null) 
-  isWorking = false // Mereset status kerja saat mati
+  isWorking = false 
   bot.chat('Waduh, aku mati! Mereset ulang posisiku...')
 })
 
@@ -56,7 +50,7 @@ bot.on('chat', async (username, message) => {
   
   else if (message === 'berhenti') {
     bot.pathfinder.setGoal(null)
-    isWorking = false // Paksa reset status kerja
+    isWorking = false 
     bot.chat('Rem mendadak. Aku berhenti dan siap menerima perintah baru.')
   }
 
@@ -112,7 +106,6 @@ bot.on('chat', async (username, message) => {
 
   // === FITUR KONFIRMASI DENGAN PENGECEKAN INVENTORY ===
   else if (message === 'menerima kayu') {
-    // Cek dulu apakah kayu sudah benar-benar hilang dari tas bot
     const logs = bot.inventory.items().filter(item => item.name.includes('log'))
     let sisaKayu = logs.reduce((total, item) => total + item.count, 0)
 
@@ -125,8 +118,7 @@ bot.on('chat', async (username, message) => {
     }
   }
 
-  // === FITUR MENEBANG (TARGET 10 KAYU & ANTI-MEMATUNG) ===
-  // === FITUR MENEBANG (DENGAN TARGET DINAMIS) ===
+  // === FITUR MENEBANG (TARGET DINAMIS & ANTI-CRASH) ===
   else if (message.startsWith('tebang')) {
     if (isWorking) {
       bot.chat('Sabar Bos, aku masih ngerjain tugas sebelumnya! Ketik "berhenti" kalau mau membatalkan.')
@@ -134,16 +126,11 @@ bot.on('chat', async (username, message) => {
     }
 
     isWorking = true 
+    let targetKayu = 10; 
+    const kata = message.split(' '); 
     
-    // 1. MENGAMBIL ANGKA DARI CHAT BOS
-    let targetKayu = 10; // Angka default (misal Bos cuma ketik "tebang" tanpa angka)
-    const kata = message.split(' '); // Memecah kalimat berdasarkan spasi
-    
-    // Jika ada kata kedua setelah "tebang"
     if (kata.length > 1) {
       const angkaDiminta = parseInt(kata[1], 10);
-      
-      // Cek apakah kata kedua itu benar-benar angka dan lebih dari 0
       if (!isNaN(angkaDiminta) && angkaDiminta > 0) {
         targetKayu = angkaDiminta;
       } else {
@@ -151,7 +138,7 @@ bot.on('chat', async (username, message) => {
       }
     }
 
-    let ignoredBlocks = []; // Memori blok yang tidak bisa dijangkau
+    let ignoredBlocks = []; 
 
     bot.chat(`Siap laksanakan! Mencari minimal ${targetKayu} kayu...`)
     
@@ -159,20 +146,24 @@ bot.on('chat', async (username, message) => {
       let hasChoppedSomething = false
 
       while (true) {
-        // Cek jumlah kayu di tas
         const logs = bot.inventory.items().filter(item => item.name.includes('log'))
         let kayuTerkumpul = logs.reduce((total, item) => total + item.count, 0)
 
-        // Berhenti jika sudah mencapai target yang diminta Bos
         if (kayuTerkumpul >= targetKayu) {
           bot.chat(`Target tercapai! Mengumpulkan ${kayuTerkumpul} kayu.`)
           hasChoppedSomething = true
           break
         }
 
-        // Cari blok kayu, abaikan yang ada di daftar hitam, jarak mata 32 blok
+        // TWEAK SENSOR: Pengecekan super ketat agar tidak crash kena blok hantu
         const targetBlock = bot.findBlock({
-          matching: (block) => block.name.includes('log') && !ignoredBlocks.includes(block.position.toString()),
+          matching: (block) => {
+            return block && 
+                   block.name && 
+                   block.name.includes('log') && 
+                   block.position && 
+                   !ignoredBlocks.includes(block.position.toString());
+          },
           maxDistance: 32 
         })
 
@@ -190,10 +181,10 @@ bot.on('chat', async (username, message) => {
           await bot.pathfinder.goto(new goals.GoalNear(x, y, z, 1))
           await bot.dig(targetBlock)
         } catch (err) {
-          // Jika macet karena sistem parkour kita mengambil alih (GoalChanged)
-          if (err.message === 'GoalChanged' || err.name === 'GoalChanged') {
+          // TWEAK ERROR: Mencegah crash jika error dari pathfinder bernilai null
+          if (err?.message === 'GoalChanged' || err?.name === 'GoalChanged') {
             await new Promise(resolve => setTimeout(resolve, 1000));
-            continue; // Ulangi mendekati pohon itu lagi
+            continue; 
           } else {
             bot.chat('Blok ini sulit dijangkau, cari yang lain...')
             ignoredBlocks.push(targetBlock.position.toString());
@@ -202,20 +193,19 @@ bot.on('chat', async (username, message) => {
         }
       }
 
-      // TAHAP MENGANTAR
       if (hasChoppedSomething) {
         bot.chat('Memungut sisa kayu yang jatuh...')
         await new Promise(resolve => setTimeout(resolve, 1500))
 
         const targetPlayer = bot.players[username]?.entity
         if (targetPlayer) {
-          bot.chat(`OTW mengantar kayu ke ${username}!`)
+          bot.chat(`OTW mengantar kayu ke Bos!`)
           
           try {
             await bot.pathfinder.goto(new goals.GoalNear(targetPlayer.position.x, targetPlayer.position.y, targetPlayer.position.z, 2))
             await bot.lookAt(targetPlayer.position.offset(0, 1.5, 0))
           } catch (e) {
-             // Abaikan jika diganggu parkour saat mengantar
+             // Biarkan
           }
 
           const logs = bot.inventory.items().filter(item => item.name.includes('log'))
@@ -223,7 +213,7 @@ bot.on('chat', async (username, message) => {
           if (logs.length > 0) {
             for (const log of logs) {
               await bot.tossStack(log) 
-              await new Promise(resolve => setTimeout(resolve, 500)) // Jeda melempar
+              await new Promise(resolve => setTimeout(resolve, 500)) 
             }
             bot.chat('Ini hasil tebangannya, Bos! Tolong ambil lalu ketik "menerima kayu".')
           } else {
@@ -234,22 +224,24 @@ bot.on('chat', async (username, message) => {
           bot.chat('Bos di mana? Aku tidak melihatmu. Ketik "menerima kayu" untuk mereset tugasku.')
         }
       } else {
-        isWorking = false // Reset kalau sama sekali tidak dapat kayu
+        isWorking = false 
       }
     } catch (error) {
-      bot.chat('Duh, ada error sistem.')
+      bot.chat('Duh, ada error sistem (Cek Terminal VPS).')
       console.log(error)
       isWorking = false
     } 
   }
 })
 
+// ====================================================================
+// === SISTEM MONITORING ANTI-STUCK V4 (Anti-Looping) ===
+// ====================================================================
 let posisiTerakhir = null;
 let waktuMacet = 0;
 let sedangPenyelamatan = false;
 
 bot.on('physicsTick', async () => {
-  // Hanya aktif jika punya tujuan dan tidak sedang diselamatkan
   if (bot.pathfinder.goal && !sedangPenyelamatan) {
     
     const posisiSekarang = bot.entity.position.clone();
@@ -257,31 +249,22 @@ bot.on('physicsTick', async () => {
     if (posisiTerakhir) {
       const jarakGerak = posisiSekarang.distanceTo(posisiTerakhir);
       
-      // KUNCI LOGIKA BARU: 
-      // Hanya hitung macet JIKA bot sedang berusaha "Maju" (W ditekan) TAPI tidak berpindah tempat.
-      // Kalau dia diam karena sedang mikir rute atau sedang menebang, waktuMacet tidak bertambah!
       if (bot.controlState.forward && jarakGerak < 0.05) {
         waktuMacet++;
       } else {
-        waktuMacet = 0; // Reset jika lancar jalan atau memang sedang sengaja diam
+        waktuMacet = 0; 
       }
     }
     
     posisiTerakhir = posisiSekarang;
 
-    // Toleransi dinaikkan sedikit ke 10 tick (0.5 detik) agar aman dari lag server
     if (waktuMacet > 10) {
       sedangPenyelamatan = true;
       
-      // Matikan pesan ini biar layar bersih
-      // bot.chat('Waduh, Pathfinder-ku stuck! Aktifkan Auto-Parkour...');
-      
-      // 1. Simpan & Matikan Pathfinder
       const tujuanBos = bot.pathfinder.goal;
       bot.pathfinder.setGoal(null);
       bot.clearControlStates();
       
-      // 2. Eksekusi Parkour Sakty
       bot.setControlState('back', true);
       await new Promise(resolve => setTimeout(resolve, 150)); 
       bot.setControlState('back', false);
@@ -299,8 +282,6 @@ bot.on('physicsTick', async () => {
       
       bot.clearControlStates(); 
       
-      // 3. Kembalikan Pathfinder
-      // Pastikan tujuanBos tidak kosong sebelum dikembalikan
       if (tujuanBos) {
         bot.pathfinder.setGoal(tujuanBos);
       }
@@ -310,7 +291,6 @@ bot.on('physicsTick', async () => {
     }
   } 
   else {
-    // Reset semua jika bot sedang santai (tidak ada perintah)
     posisiTerakhir = null;
     waktuMacet = 0;
   }
