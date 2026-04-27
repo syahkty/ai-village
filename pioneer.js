@@ -155,25 +155,28 @@ bot.on('chat', async (username, message) => {
 
 // === SARAF REFLEKS ANTI-NYANGKUT (Logika Sakty) ===
 // Memaksa bot melompat jika wajahnya menabrak blok saat disuruh jalan
-let terakhirLompat = 0;
+// === SARAF REFLEKS ANTI-NYANGKUT V3 (Timing Sempurna) ===
+let sedangLompat = false;
 
 bot.on('physicsTick', () => {
-  // Syarat: Sedang disuruh jalan, nabrak tembok, DAN kakinya napak di tanah
-  if (bot.pathfinder.goal && bot.entity.isCollidedHorizontally && bot.entity.onGround) {
+  // Syarat: Disuruh jalan, nabrak tembok, di tanah, DAN sedang tidak dalam proses melompat
+  if (bot.pathfinder.goal && bot.entity.isCollidedHorizontally && bot.entity.onGround && !sedangLompat) {
     
-    const sekarang = Date.now();
+    sedangLompat = true;
     
-    // Beri jeda 500ms (setengah detik) antar lompatan agar ototnya tidak kram
-    if (sekarang - terakhirLompat > 500) {
-      // Paksa tekan spasi!
-      bot.setControlState('jump', true);
-      terakhirLompat = sekarang;
+    // Tekan tombol lompat dengan mantap!
+    bot.setControlState('jump', true);
+    
+    // Tahan tombol spasi selama 300ms (waktu yang pas untuk mencapai puncak blok 1 meter)
+    setTimeout(() => {
+      bot.setControlState('jump', false);
       
-      // Lepas tombol spasi setelah 100ms (seperti jari manusia yang menekan lalu melepas keyboard)
+      // Beri jeda istirahat 100ms sebelum dia boleh lompat lagi (mencegah spam)
       setTimeout(() => {
-        bot.setControlState('jump', false);
+        sedangLompat = false;
       }, 100);
-    }
+      
+    }, 300); 
   }
 })
 
