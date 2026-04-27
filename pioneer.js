@@ -17,11 +17,23 @@ bot.on('spawn', () => {
   console.log('PioneerBot mendarat dengan aman!')
   
   const defaultMove = new Movements(bot, bot.registry)
+  
+  // === KLINIK FISIOTERAPI: TWEAK OTOT KAKI ===
   defaultMove.canDig = false     
   defaultMove.allowParkour = true 
   
+  // TWEAK 1: Matikan fitur lari (Sprint). 
+  // Bot akan jalan santai. Ini memberi otaknya cukup waktu untuk 
+  // mendeteksi blok di depan dan melompat tanpa menabrak duluan.
+  defaultMove.allowSprints = true 
+  
+  // TWEAK 2: Atur batas berani turun (Max Drop).
+  // Kadang bot ragu melompat turun kalau medannya berundak. 
+  // Kita set agar dia berani lompat turun maksimal 3 blok (biar gak mati kena fall damage).
+  defaultMove.maxDropDown = 3      
+  
   bot.pathfinder.setMovements(defaultMove)
-  bot.chat('Sistem Pekerja Cerdas Aktif. Siap menerima perintah, Bos!')
+  bot.chat('Sesi Fisioterapi Selesai. Otot kakiku sudah diperbaiki, Bos!')
 })
 
 bot.on('death', () => {
