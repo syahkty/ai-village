@@ -9,68 +9,91 @@ const bot = mineflayer.createBot({
 
 bot.loadPlugin(pathfinder)
 
-// === SISTEM STATUS KERJA ===
 let isWorking = false 
+
+// === LOGIKA PATHFINDING SEMPURNA (Dari Referensi GitHub) ===
+// Fungsi ini menggantikan 'await bot.pathfinder.goto()' agar bot tidak pernah stuck.
+function jalanAman(targetGoal) {
+  return new Promise((resolve, reject) => {
+    // Mulai jalan
+    bot.pathfinder.setGoal(targetGoal)
+
+    // Fungsi untuk membersihkan memori (mencegah memory leak)
+    const bersihkanListener = () => {
+      bot.removeListener('goal_reached', selesai)
+      bot.removeListener('path_update', cekGagal)
+    }
+
+    // Jika berhasil sampai tujuan
+    const selesai = () => {
+      bersihkanListener()
+      resolve(true)
+    }
+
+    // Jika saat di jalan otaknya sadar tidak ada rute
+    const cekGagal = (r) => {
+      if (r.status === 'noPath') {
+        bersihkanListener()
+        bot.pathfinder.setGoal(null) // Hentikan paksa
+        reject(new Error('noPath'))
+      }
+    }
+
+    // Pasang 'telinga' untuk mendengarkan status pergerakan
+    bot.once('goal_reached', selesai)
+    bot.on('path_update', cekGagal)
+  })
+}
 
 bot.on('spawn', () => {
   console.log('PioneerBot mendarat dengan aman!')
   
-  // === KONFIGURASI PATHFINDER ALA GITHUB ===
-  const defaultMove = new Movements(bot) // Otomatis mendeteksi registry
-  
-  defaultMove.allowFreeMotion = true  // Membuat jalan dan lompatan sangat luwes (tidak kaku)
-  defaultMove.allowParkour = true     // Boleh melompat
-  defaultMove.allow1by1towers = false // Dilarang membangun pilar tanah ke atas
-  defaultMove.canDig = false          // Jangan hancurkan blok saat jalan
+  const defaultMove = new Movements(bot) 
+  defaultMove.allowFreeMotion = true  // Kunci pergerakan luwes
+  defaultMove.allowParkour = true     
+  defaultMove.allow1by1towers = false 
+  defaultMove.canDig = false          
   
   bot.pathfinder.setMovements(defaultMove)
-  bot.chat('Sistem Navigasi FreeMotion Aktif. Aku siap melompat dengan luwes!')
+  bot.chat('Sistem Navigasi Anti-Stuck Aktif!')
 })
 
 bot.on('death', () => {
-  console.log('Bot mati. Mereset sistem...')
   bot.pathfinder.setGoal(null) 
   isWorking = false 
-  bot.chat('Waduh, aku mati! Mereset ulang posisiku...')
+  bot.chat('Aduh, aku mati. Sistem di-reset.')
 })
 
 bot.on('chat', async (username, message) => {
   if (username === bot.username) return
 
-  // === FITUR NAVIGASI ===
+  // === FITUR SINI ===
   if (message === 'sini') {
-    const targetPlayer = bot.players[username]
-    if (!targetPlayer || !targetPlayer.entity) {
-      const pos = bot.entity.position
-      bot.chat(`Aku tidak melihatmu dari sini. Aku di koordinat X: ${Math.round(pos.x)}, Y: ${Math.round(pos.y)}, Z: ${Math.round(pos.z)}.`)
-      return
-    }
-    bot.chat(`Meluncur ke arah ${username}!`)
-    bot.pathfinder.setGoal(new goals.GoalFollow(targetPlayer.entity, 3), true)
+    const targetPlayer = bot.players[username]?.entity
+    if (!targetPlayer) return bot.chat('Fisikmu tidak terlihat!')
+    
+    bot.chat('Meluncur!')
+    bot.pathfinder.setGoal(new goals.GoalFollow(targetPlayer, 3), true)
   } 
   
   else if (message === 'berhenti') {
     bot.pathfinder.setGoal(null)
     isWorking = false 
-    bot.chat('Rem mendadak. Aku berhenti dan siap menerima perintah baru.')
+    bot.chat('Rem mendadak.')
   }
 
-  // === FITUR KONFIRMASI ===
   else if (message === 'menerima kayu') {
     bot.pathfinder.setGoal(null) 
     isWorking = false            
-    bot.chat('Sama-sama, Bos! Tugas telah selesai dan sistem di-reset.')
+    bot.chat('Siap, tugasku di-reset.')
   }
 
-  // === FITUR MENEBANG & MENGANTAR KAYU ===
+  // === FITUR TEBANG (Memakai jalanAman) ===
   else if (message === 'tebang') {
-    if (isWorking) {
-      bot.chat('Sabar Bos, aku masih ngerjain tugas sebelumnya!');
-      return;
-    }
+    if (isWorking) return bot.chat('Sabar, masih kerja!')
 
     isWorking = true; 
-    bot.chat('Siap laksanakan! Memindai area sekitar untuk mencari pohon...');
+    bot.chat('Mencari pohon...');
     
     let isChopping = true;
     let hasChoppedSomething = false; 
@@ -79,63 +102,57 @@ bot.on('chat', async (username, message) => {
       while (isChopping) {
         const targetBlock = bot.findBlock({
           matching: (block) => block.name.includes('log'),
-          maxDistance: 32 // Radar 32 blok
+          maxDistance: 32 
         });
 
         if (!targetBlock) {
-          if (hasChoppedSomething) {
-            bot.chat('Pohonnya sudah habis ditebang!');
-          } else {
-            bot.chat('Maaf Bos, tidak ada pohon (blok kayu) dalam jarak dekat (radius 32 blok). Tugasku batal ya.');
-            isWorking = false; 
+          if (!hasChoppedSomething) {
+            bot.chat('Tidak ada pohon di sekitarku.');
+            isWorking = false;
           }
-          isChopping = false;
           break;
         }
 
         try {
-          const x = targetBlock.position.x;
-          const y = targetBlock.position.y;
-          const z = targetBlock.position.z;
-          
-          await bot.pathfinder.goto(new goals.GoalNear(x, y, z, 1));
+          // MENGGUNAKAN FUNGSI BARU KITA
+          await jalanAman(new goals.GoalNear(targetBlock.position.x, targetBlock.position.y, targetBlock.position.z, 1))
           await bot.dig(targetBlock);
           hasChoppedSomething = true; 
         } catch (err) {
-          bot.chat('Sisa kayunya di luar jangkauanku (terlalu tinggi atau terhalang).');
-          isChopping = false;
-          break;
+          if (err.message === 'noPath') {
+            bot.chat('Aku melihat kayunya, tapi tidak ada jalan yang aman untuk ke sana.');
+          } else {
+            bot.chat('Tanganku tidak sampai ke sisa kayunya.');
+          }
+          break; // Berhenti menebang pohon ini
         }
       }
 
+      // TAHAP MENGANTAR
       if (hasChoppedSomething) {
-        bot.chat('Tunggu sebentar, aku memungut kayunya yang jatuh...');
+        bot.chat('Memungut kayu jatuh...');
         await new Promise(resolve => setTimeout(resolve, 1500));
 
         const targetPlayer = bot.players[username]?.entity;
         if (targetPlayer) {
-          bot.chat(`OTW mengantar kayu ke ${username}!`);
+          bot.chat(`Mengantar ke Bos!`);
           
-          await bot.pathfinder.goto(new goals.GoalNear(targetPlayer.position.x, targetPlayer.position.y, targetPlayer.position.z, 2));
-          await bot.lookAt(targetPlayer.position.offset(0, 1.5, 0));
+          try {
+            // MENGGUNAKAN FUNGSI BARU KITA UNTUK MENGANTAR
+            await jalanAman(new goals.GoalNear(targetPlayer.position.x, targetPlayer.position.y, targetPlayer.position.z, 2))
+            await bot.lookAt(targetPlayer.position.offset(0, 1.5, 0));
 
-          const logs = bot.inventory.items().filter(item => item.name.includes('log'));
-          
-          if (logs.length > 0) {
-            for (const log of logs) {
-              await bot.tossStack(log); 
+            const logs = bot.inventory.items().filter(item => item.name.includes('log'));
+            if (logs.length > 0) {
+              for (const log of logs) await bot.tossStack(log); 
+              bot.chat('Selesai! Tolong ketik "menerima kayu".');
             }
-            bot.chat('Ini hasil tebangannya, Bos! Tolong ketik "menerima kayu" untuk mereset tugasku.');
-          } else {
-            bot.chat('Maaf Bos, kayunya tidak masuk ke inventory-ku. Ketik "menerima kayu" untuk mereset.');
+          } catch (err) {
+            bot.chat('Aku tidak menemukan jalan menuju tempatmu berdiri, Bos.');
           }
-        } else {
-          bot.chat('Bos di mana? Aku tidak melihatmu. Ketik "menerima kayu" untuk mereset tugasku.');
         }
       }
-
     } catch (error) {
-      bot.chat('Duh, aku nyangkut di jalan.');
       console.log(error);
     } 
   }
