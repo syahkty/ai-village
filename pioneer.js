@@ -118,7 +118,7 @@ bot.on('chat', async (username, message) => {
     }
   }
 
-  // === FITUR MENEBANG (TARGET DINAMIS & ANTI-CRASH) ===
+  // === FITUR MENEBANG (RADAR ID SUPER CEPAT & ANTI-BUTA) ===
   else if (message.startsWith('tebang')) {
     if (isWorking) {
       bot.chat('Sabar Bos, aku masih ngerjain tugas sebelumnya! Ketik "berhenti" kalau mau membatalkan.')
@@ -140,12 +140,16 @@ bot.on('chat', async (username, message) => {
 
     let ignoredBlocks = []; 
 
+    // AMBIL SEMUA ID KAYU YANG ADA DI SERVER (Radar ID)
+    const logBlockIds = bot.registry.blocksArray.filter(b => b.name.includes('log')).map(b => b.id);
+
     bot.chat(`Siap laksanakan! Mencari minimal ${targetKayu} kayu...`)
     
     try {
       let hasChoppedSomething = false
 
       while (true) {
+        // Cek isi tas
         const logs = bot.inventory.items().filter(item => item.name.includes('log'))
         let kayuTerkumpul = logs.reduce((total, item) => total + item.count, 0)
 
@@ -155,17 +159,22 @@ bot.on('chat', async (username, message) => {
           break
         }
 
-        // TWEAK SENSOR: Pengecekan super ketat agar tidak crash kena blok hantu
-        const targetBlock = bot.findBlock({
-          matching: (block) => {
-            return block && 
-                   block.name && 
-                   block.name.includes('log') && 
-                   block.position && 
-                   !ignoredBlocks.includes(block.position.toString());
-          },
-          maxDistance: 32 
-        })
+        // TEKNIK RADAR: Cari 50 koordinat kayu terdekat menggunakan ID
+        const targetPositions = bot.findBlocks({
+          matching: logBlockIds,
+          maxDistance: 32,
+          count: 50
+        });
+
+        // Seleksi 1 koordinat kayu yang belum masuk daftar hitam
+        let targetBlock = null;
+        for (const pos of targetPositions) {
+          const posKey = `${pos.x},${pos.y},${pos.z}`;
+          if (!ignoredBlocks.includes(posKey)) {
+            targetBlock = bot.blockAt(pos); // Konversi koordinat jadi blok
+            break; // Dapatkan yang pertama (paling dekat)
+          }
+        }
 
         if (!targetBlock) {
           bot.chat(`Pohon di sekitarku habis. Cuma dapat ${kayuTerkumpul} kayu.`)
@@ -181,13 +190,14 @@ bot.on('chat', async (username, message) => {
           await bot.pathfinder.goto(new goals.GoalNear(x, y, z, 1))
           await bot.dig(targetBlock)
         } catch (err) {
-          // TWEAK ERROR: Mencegah crash jika error dari pathfinder bernilai null
           if (err?.message === 'GoalChanged' || err?.name === 'GoalChanged') {
             await new Promise(resolve => setTimeout(resolve, 1000));
             continue; 
           } else {
             bot.chat('Blok ini sulit dijangkau, cari yang lain...')
-            ignoredBlocks.push(targetBlock.position.toString());
+            // Format daftar hitam yang aman
+            const posKey = `${targetBlock.position.x},${targetBlock.position.y},${targetBlock.position.z}`;
+            ignoredBlocks.push(posKey);
             await new Promise(resolve => setTimeout(resolve, 500));
           }
         }
@@ -205,7 +215,7 @@ bot.on('chat', async (username, message) => {
             await bot.pathfinder.goto(new goals.GoalNear(targetPlayer.position.x, targetPlayer.position.y, targetPlayer.position.z, 2))
             await bot.lookAt(targetPlayer.position.offset(0, 1.5, 0))
           } catch (e) {
-             // Biarkan
+             // Abaikan tabrakan saat antar
           }
 
           const logs = bot.inventory.items().filter(item => item.name.includes('log'))
