@@ -10,36 +10,27 @@ const bot = mineflayer.createBot({
 bot.loadPlugin(pathfinder)
 
 // === SISTEM STATUS KERJA ===
-// Variabel ini mencegah bot kebingungan jika disuruh tebang berkali-kali secara bersamaan
 let isWorking = false 
 
 bot.on('spawn', () => {
   console.log('PioneerBot mendarat dengan aman!')
   
-  const defaultMove = new Movements(bot, bot.registry)
+  // === KONFIGURASI PATHFINDER ALA GITHUB ===
+  const defaultMove = new Movements(bot) // Otomatis mendeteksi registry
   
-  // === KLINIK FISIOTERAPI: TWEAK OTOT KAKI ===
-  defaultMove.canDig = false     
-  defaultMove.allowParkour = true 
-  
-  // TWEAK 1: Matikan fitur lari (Sprint). 
-  // Bot akan jalan santai. Ini memberi otaknya cukup waktu untuk 
-  // mendeteksi blok di depan dan melompat tanpa menabrak duluan.
-  defaultMove.allowSprints = true 
-  
-  // TWEAK 2: Atur batas berani turun (Max Drop).
-  // Kadang bot ragu melompat turun kalau medannya berundak. 
-  // Kita set agar dia berani lompat turun maksimal 3 blok (biar gak mati kena fall damage).
-  defaultMove.maxDropDown = 3      
+  defaultMove.allowFreeMotion = true  // Membuat jalan dan lompatan sangat luwes (tidak kaku)
+  defaultMove.allowParkour = true     // Boleh melompat
+  defaultMove.allow1by1towers = false // Dilarang membangun pilar tanah ke atas
+  defaultMove.canDig = false          // Jangan hancurkan blok saat jalan
   
   bot.pathfinder.setMovements(defaultMove)
-  bot.chat('Sesi Fisioterapi Selesai. Otot kakiku sudah diperbaiki, Bos!')
+  bot.chat('Sistem Navigasi FreeMotion Aktif. Aku siap melompat dengan luwes!')
 })
 
 bot.on('death', () => {
   console.log('Bot mati. Mereset sistem...')
   bot.pathfinder.setGoal(null) 
-  isWorking = false // Mereset status kerja saat mati
+  isWorking = false 
   bot.chat('Waduh, aku mati! Mereset ulang posisiku...')
 })
 
@@ -60,116 +51,93 @@ bot.on('chat', async (username, message) => {
   
   else if (message === 'berhenti') {
     bot.pathfinder.setGoal(null)
-    isWorking = false // Paksa reset status kerja
+    isWorking = false 
     bot.chat('Rem mendadak. Aku berhenti dan siap menerima perintah baru.')
   }
 
-  // === FITUR KONFIRMASI (BARU) ===
+  // === FITUR KONFIRMASI ===
   else if (message === 'menerima kayu') {
-    bot.pathfinder.setGoal(null) // Menghentikan gerakan bot sepenuhnya
-    isWorking = false            // Memastikan bot siap kerja lagi
-    bot.chat('Sama-sama, Bos! Tugas telah selesai dan sistem di-reset. Ketik "tebang" lagi jika ingin aku mencari pohon dari awal.')
+    bot.pathfinder.setGoal(null) 
+    isWorking = false            
+    bot.chat('Sama-sama, Bos! Tugas telah selesai dan sistem di-reset.')
   }
 
   // === FITUR MENEBANG & MENGANTAR KAYU ===
   else if (message === 'tebang') {
-    // Mengecek apakah bot masih ngerjain tugas sebelumnya
     if (isWorking) {
-      bot.chat('Sabar Bos, aku masih ngerjain tugas sebelumnya! Ketik "berhenti" kalau mau membatalkan.')
-      return
+      bot.chat('Sabar Bos, aku masih ngerjain tugas sebelumnya!');
+      return;
     }
 
-    // Mengunci status bot menjadi "Sedang Bekerja"
-    isWorking = true 
-    bot.chat('Siap laksanakan! Mulai mencari pohon dari awal...')
+    isWorking = true; 
+    bot.chat('Siap laksanakan! Memindai area sekitar untuk mencari pohon...');
     
-    let isChopping = true
+    let isChopping = true;
+    let hasChoppedSomething = false; 
 
     try {
-      // 1. Proses Menebang
       while (isChopping) {
         const targetBlock = bot.findBlock({
           matching: (block) => block.name.includes('log'),
-          maxDistance: 10
-        })
+          maxDistance: 32 // Radar 32 blok
+        });
 
         if (!targetBlock) {
-          bot.chat('Pohon di depanku sudah habis!')
-          isChopping = false
-          break
+          if (hasChoppedSomething) {
+            bot.chat('Pohonnya sudah habis ditebang!');
+          } else {
+            bot.chat('Maaf Bos, tidak ada pohon (blok kayu) dalam jarak dekat (radius 32 blok). Tugasku batal ya.');
+            isWorking = false; 
+          }
+          isChopping = false;
+          break;
         }
 
         try {
-          const x = targetBlock.position.x
-          const y = targetBlock.position.y
-          const z = targetBlock.position.z
+          const x = targetBlock.position.x;
+          const y = targetBlock.position.y;
+          const z = targetBlock.position.z;
           
-          await bot.pathfinder.goto(new goals.GoalNear(x, y, z, 1))
-          await bot.dig(targetBlock)
+          await bot.pathfinder.goto(new goals.GoalNear(x, y, z, 1));
+          await bot.dig(targetBlock);
+          hasChoppedSomething = true; 
         } catch (err) {
-          bot.chat('Sisa kayunya terlalu tinggi, tanganku tidak sampai!')
-          isChopping = false
-          break
+          bot.chat('Sisa kayunya di luar jangkauanku (terlalu tinggi atau terhalang).');
+          isChopping = false;
+          break;
         }
       }
 
-      // 2. Memungut Barang
-      bot.chat('Tunggu sebentar, aku memungut kayunya yang jatuh...')
-      await new Promise(resolve => setTimeout(resolve, 1500))
+      if (hasChoppedSomething) {
+        bot.chat('Tunggu sebentar, aku memungut kayunya yang jatuh...');
+        await new Promise(resolve => setTimeout(resolve, 1500));
 
-      // 3. Mencari Bos dan Mengantar Barang
-      const targetPlayer = bot.players[username]?.entity
-      if (targetPlayer) {
-        bot.chat(`OTW mengantar kayu ke ${username}!`)
-        
-        await bot.pathfinder.goto(new goals.GoalNear(targetPlayer.position.x, targetPlayer.position.y, targetPlayer.position.z, 2))
-        await bot.lookAt(targetPlayer.position.offset(0, 1.5, 0))
+        const targetPlayer = bot.players[username]?.entity;
+        if (targetPlayer) {
+          bot.chat(`OTW mengantar kayu ke ${username}!`);
+          
+          await bot.pathfinder.goto(new goals.GoalNear(targetPlayer.position.x, targetPlayer.position.y, targetPlayer.position.z, 2));
+          await bot.lookAt(targetPlayer.position.offset(0, 1.5, 0));
 
-        const logs = bot.inventory.items().filter(item => item.name.includes('log'))
-        
-        if (logs.length > 0) {
-          for (const log of logs) {
-            await bot.tossStack(log) 
+          const logs = bot.inventory.items().filter(item => item.name.includes('log'));
+          
+          if (logs.length > 0) {
+            for (const log of logs) {
+              await bot.tossStack(log); 
+            }
+            bot.chat('Ini hasil tebangannya, Bos! Tolong ketik "menerima kayu" untuk mereset tugasku.');
+          } else {
+            bot.chat('Maaf Bos, kayunya tidak masuk ke inventory-ku. Ketik "menerima kayu" untuk mereset.');
           }
-          // Mengingatkan Bos untuk konfirmasi
-          bot.chat('Ini hasil tebangannya, Bos! Tolong ketik "menerima kayu" untuk menyelesaikan tugas ini.')
         } else {
-          bot.chat('Maaf Bos, kayunya tidak masuk ke inventory-ku (mungkin jatuh ke tempat yang tidak bisa kuambil).')
-          // Tetap ingatkan konfirmasi kalau gagal ambil
-          bot.chat('Ketik "menerima kayu" agar aku bisa reset tugas.')
+          bot.chat('Bos di mana? Aku tidak melihatmu. Ketik "menerima kayu" untuk mereset tugasku.');
         }
-      } else {
-        bot.chat('Bos di mana? Aku tidak melihatmu. Ketik "menerima kayu" untuk mereset tugasku.')
       }
+
     } catch (error) {
-      bot.chat('Duh, aku nyangkut di jalan.')
-      console.log(error)
-    } finally {
-      // Menandai proses penebangan sudah selesai secara sistem
-      // (Namun bot tetap akan diam menunggu bos mengetik "menerima kayu")
-      isWorking = false 
-    }
-  }
-})
-// === KLINIK FISIOTERAPI: SARAF REFLEKS AUTO-JUMP ===
-// physicsTick berjalan 20 kali per detik (setiap tick server Minecraft)
-// === KLINIK FISIOTERAPI: LOMPAT BARBAR (Logika Sakty) ===
-bot.on('physicsTick', () => {
-  // Hanya jalankan refleks ini kalau bot sedang disuruh jalan (punya tujuan)
-  if (bot.pathfinder.goal) {
-    
-    // Jika fisik bot menabrak tembok horizontal (mentok blok)
-    if (bot.entity.isCollidedHorizontally) {
-      // Ambil alih kendali: Paksa MAJU dan LOMPAT sekaligus!
-      bot.setControlState('jump', true)
-      bot.setControlState('forward', true)
+      bot.chat('Duh, aku nyangkut di jalan.');
+      console.log(error);
     } 
-    // Jika sudah di udara/melewati blok (tidak mentok lagi)
-    else {
-      // Lepaskan tombol lompat agar tidak loncat-loncat tidak jelas
-      bot.setControlState('jump', false)
-      // Catatan: Tombol 'maju' tidak kita false-kan agar pathfinder bisa melanjutkannya
-    }
   }
 })
 
