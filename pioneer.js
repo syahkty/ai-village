@@ -217,7 +217,7 @@ bot.on('physicsTick', async () => {
     posisiTerakhir = posisiSekarang;
 
     // JIKA BOT MACET SELAMA 20 TICK (1 Detik Penuh)
-    if (waktuMacet > 4) {
+    if (waktuMacet > 2) {
       sedangPenyelamatan = true;
       bot.chat('Waduh, Pathfinder-ku stuck! Aktifkan Auto-Parkour...');
       
