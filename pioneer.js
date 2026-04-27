@@ -110,14 +110,22 @@ bot.on('chat', async (username, message) => {
     bot.chat('Hap! Parkour berhasil dari jarak mana pun.');
   }
 
-  // === FITUR KONFIRMASI ===
+  // === FITUR KONFIRMASI DENGAN PENGECEKAN INVENTORY ===
   else if (message === 'menerima kayu') {
-    bot.pathfinder.setGoal(null) 
-    isWorking = false            
-    bot.chat('Sama-sama, Bos! Tugas telah selesai dan sistem di-reset. Ketik "tebang" lagi jika ingin aku mencari pohon dari awal.')
+    // Cek dulu apakah kayu sudah benar-benar hilang dari tas bot
+    const logs = bot.inventory.items().filter(item => item.name.includes('log'))
+    let sisaKayu = logs.reduce((total, item) => total + item.count, 0)
+
+    if (sisaKayu > 0) {
+      bot.chat(`Tunggu Bos! Masih ada ${sisaKayu} kayu di tas-ku. Tolong ambil dulu kayunya yang jatuh, atau kosongkan tas-ku, baru ketik "menerima kayu".`)
+    } else {
+      bot.pathfinder.setGoal(null) 
+      isWorking = false            
+      bot.chat('Sip! Inventory-ku sudah bersih. Tugas selesai dan sistem siap menerima perintah baru.')
+    }
   }
 
-  // === FITUR MENEBANG & MENGANTAR KAYU ===
+  // === FITUR MENEBANG (TARGET 10 KAYU & ANTI-MEMATUNG) ===
   else if (message === 'tebang') {
     if (isWorking) {
       bot.chat('Sabar Bos, aku masih ngerjain tugas sebelumnya! Ketik "berhenti" kalau mau membatalkan.')
@@ -125,20 +133,35 @@ bot.on('chat', async (username, message) => {
     }
 
     isWorking = true 
-    bot.chat('Siap laksanakan! Mulai mencari pohon dari awal...')
-    
-    let isChopping = true
+    const targetKayu = 10; // Target jumlah kayu yang dicari
+    let ignoredBlocks = []; // Memori blok yang tidak bisa dijangkau
 
+    bot.chat(`Siap laksanakan! Mencari minimal ${targetKayu} kayu...`)
+    
     try {
-      while (isChopping) {
+      let hasChoppedSomething = false
+
+      while (true) {
+        // Cek jumlah kayu di tas
+        const logs = bot.inventory.items().filter(item => item.name.includes('log'))
+        let kayuTerkumpul = logs.reduce((total, item) => total + item.count, 0)
+
+        // Berhenti jika sudah mencapai target 10 kayu
+        if (kayuTerkumpul >= targetKayu) {
+          bot.chat(`Target tercapai! Mengumpulkan ${kayuTerkumpul} kayu.`)
+          hasChoppedSomething = true
+          break
+        }
+
+        // Cari blok kayu, abaikan yang ada di daftar hitam, jarak mata 32 blok
         const targetBlock = bot.findBlock({
-          matching: (block) => block.name.includes('log'),
-          maxDistance: 10
+          matching: (block) => block.name.includes('log') && !ignoredBlocks.includes(block.position.toString()),
+          maxDistance: 32 
         })
 
         if (!targetBlock) {
-          bot.chat('Pohon di depanku sudah habis!')
-          isChopping = false
+          bot.chat(`Pohon di sekitarku habis. Cuma dapat ${kayuTerkumpul} kayu.`)
+          if (kayuTerkumpul > 0) hasChoppedSomething = true
           break
         }
 
@@ -150,42 +173,57 @@ bot.on('chat', async (username, message) => {
           await bot.pathfinder.goto(new goals.GoalNear(x, y, z, 1))
           await bot.dig(targetBlock)
         } catch (err) {
-          bot.chat('Sisa kayunya terlalu tinggi, tanganku tidak sampai!')
-          isChopping = false
-          break
+          // Jika macet karena sistem parkour kita mengambil alih (GoalChanged)
+          if (err.message === 'GoalChanged' || err.name === 'GoalChanged') {
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            continue; // Ulangi mendekati pohon itu lagi
+          } else {
+            bot.chat('Blok ini sulit dijangkau, cari yang lain...')
+            ignoredBlocks.push(targetBlock.position.toString());
+            await new Promise(resolve => setTimeout(resolve, 500));
+          }
         }
       }
 
-      bot.chat('Tunggu sebentar, aku memungut kayunya yang jatuh...')
-      await new Promise(resolve => setTimeout(resolve, 1500))
+      // TAHAP MENGANTAR
+      if (hasChoppedSomething) {
+        bot.chat('Memungut sisa kayu yang jatuh...')
+        await new Promise(resolve => setTimeout(resolve, 1500))
 
-      const targetPlayer = bot.players[username]?.entity
-      if (targetPlayer) {
-        bot.chat(`OTW mengantar kayu ke ${username}!`)
-        
-        await bot.pathfinder.goto(new goals.GoalNear(targetPlayer.position.x, targetPlayer.position.y, targetPlayer.position.z, 2))
-        await bot.lookAt(targetPlayer.position.offset(0, 1.5, 0))
-
-        const logs = bot.inventory.items().filter(item => item.name.includes('log'))
-        
-        if (logs.length > 0) {
-          for (const log of logs) {
-            await bot.tossStack(log) 
+        const targetPlayer = bot.players[username]?.entity
+        if (targetPlayer) {
+          bot.chat(`OTW mengantar kayu ke ${username}!`)
+          
+          try {
+            await bot.pathfinder.goto(new goals.GoalNear(targetPlayer.position.x, targetPlayer.position.y, targetPlayer.position.z, 2))
+            await bot.lookAt(targetPlayer.position.offset(0, 1.5, 0))
+          } catch (e) {
+             // Abaikan jika diganggu parkour saat mengantar
           }
-          bot.chat('Ini hasil tebangannya, Bos! Tolong ketik "menerima kayu" untuk menyelesaikan tugas ini.')
+
+          const logs = bot.inventory.items().filter(item => item.name.includes('log'))
+          
+          if (logs.length > 0) {
+            for (const log of logs) {
+              await bot.tossStack(log) 
+              await new Promise(resolve => setTimeout(resolve, 500)) // Jeda melempar
+            }
+            bot.chat('Ini hasil tebangannya, Bos! Tolong ambil lalu ketik "menerima kayu".')
+          } else {
+            bot.chat('Maaf Bos, kayunya tidak masuk ke inventory-ku.')
+            bot.chat('Ketik "menerima kayu" agar aku bisa reset tugas.')
+          }
         } else {
-          bot.chat('Maaf Bos, kayunya tidak masuk ke inventory-ku (mungkin jatuh ke tempat yang tidak bisa kuambil).')
-          bot.chat('Ketik "menerima kayu" agar aku bisa reset tugas.')
+          bot.chat('Bos di mana? Aku tidak melihatmu. Ketik "menerima kayu" untuk mereset tugasku.')
         }
       } else {
-        bot.chat('Bos di mana? Aku tidak melihatmu. Ketik "menerima kayu" untuk mereset tugasku.')
+        isWorking = false // Reset kalau sama sekali tidak dapat kayu
       }
     } catch (error) {
-      bot.chat('Duh, aku nyangkut di jalan.')
+      bot.chat('Duh, ada error sistem.')
       console.log(error)
-    } finally {
-      isWorking = false 
-    }
+      isWorking = false
+    } 
   }
 })
 
