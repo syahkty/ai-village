@@ -159,6 +159,7 @@ bot.on('physicsTick', () => {
   if (bot.pathfinder.goal) {
     if (bot.entity.isCollidedHorizontally) {
       bot.setControlState('jump', true) 
+      bot.chat('mencoba loncat')
     } else {
       bot.setControlState('jump', false) 
     }
