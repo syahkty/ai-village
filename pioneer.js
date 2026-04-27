@@ -110,7 +110,7 @@ bot.on('chat', async (username, message) => {
     // (Di tahap ini bot dipastikan sudah menempel di tembok berkat langkah 2)
     bot.chat('Nempel tembok! Mundur dikit buat ambil ancang-ancang...');
     bot.setControlState('back', true);
-    await new Promise(resolve => setTimeout(resolve, 230)); // Mundur presisi 200ms
+    await new Promise(resolve => setTimeout(resolve, 250)); // Mundur presisi 200ms
     bot.setControlState('back', false);
     
     // Jeda sebentar menstabilkan keseimbangan fisik
