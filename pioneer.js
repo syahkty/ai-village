@@ -64,6 +64,20 @@ bot.on('chat', async (username, message) => {
     bot.chat('Rem mendadak. Aku berhenti dan siap menerima perintah baru.')
   }
 
+  // === FITUR TES LOMPAT MANUAL ===
+  else if (message === 'lompat') {
+    bot.chat('Hiaaa! (Tes lompat di tempat)');
+    
+    // Tekan tombol spasi
+    bot.setControlState('jump', true);
+    
+    // Tahan spasi selama 300 milidetik (waktu standar Minecraft untuk lompatan penuh)
+    setTimeout(() => {
+      // Lepas tombol spasi
+      bot.setControlState('jump', false);
+    }, 300);
+  }
+
   // === FITUR KONFIRMASI (BARU) ===
   else if (message === 'menerima kayu') {
     bot.pathfinder.setGoal(null) // Menghentikan gerakan bot sepenuhnya
