@@ -78,17 +78,25 @@ bot.on('chat', async (username, message) => {
     }, 300);
   }
 
-  // === FITUR TES LOMPAT MANUAL ===
-  else if (message === 'lompat') {
-    bot.chat('Hiaaa! (Tes lompat di tempat)');
+  // === FITUR TES LOMPAT SAMBIL MAJU ===
+  else if (message === 'lompat maju') {
+    bot.chat('Parkour mode on! Hiaaa!');
     
-    // Tekan tombol spasi
+    // 1. Tekan tombol maju dan lompat bersamaan
+    bot.setControlState('forward', true);
     bot.setControlState('jump', true);
     
-    // Tahan spasi selama 300 milidetik (waktu standar Minecraft untuk lompatan penuh)
+    // 2. Lepas tombol lompat setelah 300ms (saat berada di puncak lompatan)
     setTimeout(() => {
-      // Lepas tombol spasi
       bot.setControlState('jump', false);
+      
+      // 3. TETAP MAJU selama 500ms lagi agar tubuhnya masuk ke atas blok
+      setTimeout(() => {
+        // Lepas tombol maju, bot berhenti bergerak
+        bot.setControlState('forward', false);
+        bot.chat('Mendarat!');
+      }, 500); 
+      
     }, 300);
   }
 
