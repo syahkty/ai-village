@@ -126,14 +126,31 @@ bot.on('chat', async (username, message) => {
   }
 
   // === FITUR MENEBANG (TARGET 10 KAYU & ANTI-MEMATUNG) ===
-  else if (message === 'tebang') {
+  // === FITUR MENEBANG (DENGAN TARGET DINAMIS) ===
+  else if (message.startsWith('tebang')) {
     if (isWorking) {
       bot.chat('Sabar Bos, aku masih ngerjain tugas sebelumnya! Ketik "berhenti" kalau mau membatalkan.')
       return
     }
 
     isWorking = true 
-    const targetKayu = 10; // Target jumlah kayu yang dicari
+    
+    // 1. MENGAMBIL ANGKA DARI CHAT BOS
+    let targetKayu = 10; // Angka default (misal Bos cuma ketik "tebang" tanpa angka)
+    const kata = message.split(' '); // Memecah kalimat berdasarkan spasi
+    
+    // Jika ada kata kedua setelah "tebang"
+    if (kata.length > 1) {
+      const angkaDiminta = parseInt(kata[1], 10);
+      
+      // Cek apakah kata kedua itu benar-benar angka dan lebih dari 0
+      if (!isNaN(angkaDiminta) && angkaDiminta > 0) {
+        targetKayu = angkaDiminta;
+      } else {
+        bot.chat('Perintahnya aneh Bos. Aku tebang target standar (10 kayu) aja ya.');
+      }
+    }
+
     let ignoredBlocks = []; // Memori blok yang tidak bisa dijangkau
 
     bot.chat(`Siap laksanakan! Mencari minimal ${targetKayu} kayu...`)
@@ -146,7 +163,7 @@ bot.on('chat', async (username, message) => {
         const logs = bot.inventory.items().filter(item => item.name.includes('log'))
         let kayuTerkumpul = logs.reduce((total, item) => total + item.count, 0)
 
-        // Berhenti jika sudah mencapai target 10 kayu
+        // Berhenti jika sudah mencapai target yang diminta Bos
         if (kayuTerkumpul >= targetKayu) {
           bot.chat(`Target tercapai! Mengumpulkan ${kayuTerkumpul} kayu.`)
           hasChoppedSomething = true
