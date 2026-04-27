@@ -80,45 +80,54 @@ bot.on('chat', async (username, message) => {
 
   // === FITUR TES LOMPAT SAMBIL MAJU ===
   // === FITUR TES LOMPAT MAJU (Dengan Ancang-ancang Otomatis) ===
+  // === FITUR TES LOMPAT MAJU (Auto-Positioning Sempurna) ===
   else if (message === 'lompat maju') {
-    bot.chat('Menganalisis jarak rintangan di depan...');
+    bot.chat('Menganalisis jarak... Mencari posisi parkour ideal.');
     
-    // 1. Kunci pandangan ke arahmu agar arah "depan/belakang"-nya presisi
+    // 1. Kunci pandangan ke arah Bos
     const target = bot.players[username]?.entity;
     if (target) {
       await bot.lookAt(target.position.offset(0, 1.5, 0));
     }
 
-    // 2. PENGECEKAN BLOK: Apakah bot terlalu nempel dengan tembok?
-    // bot.entity.isCollidedHorizontally adalah sensor tabrakan bawaan bot
-    if (bot.entity.isCollidedHorizontally) {
-      bot.chat('Terlalu dekat dengan blok! Mundur dikit buat ambil ancang-ancang...');
+    // 2. PENYESUAIAN JARAK (Jika terlalu jauh)
+    // Kalau tidak nempel tembok, berarti terlalu jauh. Maju dulu!
+    if (!bot.entity.isCollidedHorizontally) {
+      bot.chat('Terlalu jauh. Aku jalan maju dulu sampai ketemu bloknya...');
+      bot.setControlState('forward', true);
       
-      // Tekan tombol mundur (S)
-      bot.setControlState('back', true);
-      
-      // Mundur selama 200 milidetik (sekitar 1-2 langkah mundur)
-      await new Promise(resolve => setTimeout(resolve, 200));
-      
-      // Rem (Lepas tombol mundur)
-      bot.setControlState('back', false);
-      
-      // Beri jeda sebentar agar otaknya menstabilkan posisi
-      await new Promise(resolve => setTimeout(resolve, 50));
+      let waktuPencarian = 0;
+      // Loop: Tunggu sampai bot menabrak tembok (Maksimal 3 detik agar tidak bablas)
+      while (!bot.entity.isCollidedHorizontally && waktuPencarian < 60) {
+        await new Promise(resolve => setTimeout(resolve, 50)); // Cek sensor setiap 50 milidetik
+        waktuPencarian++;
+      }
+      // Begitu nempel, langsung rem!
+      bot.setControlState('forward', false);
     }
 
-    // 3. EKSEKUSI PARKOUR (Jarak sudah aman, gesekan tembok hilang)
-    bot.setControlState('jump', true);
-    await new Promise(resolve => setTimeout(resolve, 50)); // Lompat dulu
+    // 3. AMBIL ANCANG-ANCANG (Mundur selangkah dari tembok)
+    // (Di tahap ini bot dipastikan sudah menempel di tembok berkat langkah 2)
+    bot.chat('Nempel tembok! Mundur dikit buat ambil ancang-ancang...');
+    bot.setControlState('back', true);
+    await new Promise(resolve => setTimeout(resolve, 200)); // Mundur presisi 200ms
+    bot.setControlState('back', false);
     
-    bot.setControlState('forward', true); // Baru maju
+    // Jeda sebentar menstabilkan keseimbangan fisik
+    await new Promise(resolve => setTimeout(resolve, 50));
+
+    // 4. EKSEKUSI PARKOUR PRO
+    bot.setControlState('jump', true);
+    await new Promise(resolve => setTimeout(resolve, 50)); // Angkat badan
+    
+    bot.setControlState('forward', true); 
     await new Promise(resolve => setTimeout(resolve, 250)); // Terbang ke depan
     
-    bot.setControlState('jump', false); // Lepas spasi
-    await new Promise(resolve => setTimeout(resolve, 300)); // Proses mendarat di atas
+    bot.setControlState('jump', false); 
+    await new Promise(resolve => setTimeout(resolve, 300)); // Mendarat
     
-    bot.setControlState('forward', false); // Lepas W
-    bot.chat('Hap! Mendarat dengan mulus.');
+    bot.setControlState('forward', false); // Rem total
+    bot.chat('Hap! Parkour berhasil dari jarak mana pun.');
   }
 
   // === FITUR KONFIRMASI (BARU) ===
