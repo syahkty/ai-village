@@ -11,35 +11,30 @@ bot.loadPlugin(pathfinder)
 
 let isWorking = false 
 
-// === LOGIKA PATHFINDING SEMPURNA (Dari Referensi GitHub) ===
-// Fungsi ini menggantikan 'await bot.pathfinder.goto()' agar bot tidak pernah stuck.
+// === LOGIKA PATHFINDING SEMPURNA ===
+// Mencegah bot stuck saat mencari rute yang rumit
 function jalanAman(targetGoal) {
   return new Promise((resolve, reject) => {
-    // Mulai jalan
     bot.pathfinder.setGoal(targetGoal)
 
-    // Fungsi untuk membersihkan memori (mencegah memory leak)
     const bersihkanListener = () => {
       bot.removeListener('goal_reached', selesai)
       bot.removeListener('path_update', cekGagal)
     }
 
-    // Jika berhasil sampai tujuan
     const selesai = () => {
       bersihkanListener()
       resolve(true)
     }
 
-    // Jika saat di jalan otaknya sadar tidak ada rute
     const cekGagal = (r) => {
       if (r.status === 'noPath') {
         bersihkanListener()
-        bot.pathfinder.setGoal(null) // Hentikan paksa
+        bot.pathfinder.setGoal(null)
         reject(new Error('noPath'))
       }
     }
 
-    // Pasang 'telinga' untuk mendengarkan status pergerakan
     bot.once('goal_reached', selesai)
     bot.on('path_update', cekGagal)
   })
@@ -48,14 +43,16 @@ function jalanAman(targetGoal) {
 bot.on('spawn', () => {
   console.log('PioneerBot mendarat dengan aman!')
   
-  const defaultMove = new Movements(bot) 
-  defaultMove.allowFreeMotion = true  // Kunci pergerakan luwes
+  // WAJIB pakai bot.registry agar dia tahu persis tinggi blok tanah
+  const defaultMove = new Movements(bot, bot.registry) 
+  
+  defaultMove.allowFreeMotion = false // MATIKAN INI! Ini biang kerok bot malas lompat
   defaultMove.allowParkour = true     
   defaultMove.allow1by1towers = false 
   defaultMove.canDig = false          
   
   bot.pathfinder.setMovements(defaultMove)
-  bot.chat('Sistem Navigasi Anti-Stuck Aktif!')
+  bot.chat('Sistem Navigasi & Refleks Lompat Aktif, Bos!')
 })
 
 bot.on('death', () => {
@@ -114,7 +111,6 @@ bot.on('chat', async (username, message) => {
         }
 
         try {
-          // MENGGUNAKAN FUNGSI BARU KITA
           await jalanAman(new goals.GoalNear(targetBlock.position.x, targetBlock.position.y, targetBlock.position.z, 1))
           await bot.dig(targetBlock);
           hasChoppedSomething = true; 
@@ -124,7 +120,7 @@ bot.on('chat', async (username, message) => {
           } else {
             bot.chat('Tanganku tidak sampai ke sisa kayunya.');
           }
-          break; // Berhenti menebang pohon ini
+          break; 
         }
       }
 
@@ -138,7 +134,6 @@ bot.on('chat', async (username, message) => {
           bot.chat(`Mengantar ke Bos!`);
           
           try {
-            // MENGGUNAKAN FUNGSI BARU KITA UNTUK MENGANTAR
             await jalanAman(new goals.GoalNear(targetPlayer.position.x, targetPlayer.position.y, targetPlayer.position.z, 2))
             await bot.lookAt(targetPlayer.position.offset(0, 1.5, 0));
 
@@ -155,6 +150,18 @@ bot.on('chat', async (username, message) => {
     } catch (error) {
       console.log(error);
     } 
+  }
+})
+
+// === SARAF REFLEKS ANTI-NYANGKUT (Logika Sakty) ===
+// Memaksa bot melompat jika wajahnya menabrak blok saat disuruh jalan
+bot.on('physicsTick', () => {
+  if (bot.pathfinder.goal) {
+    if (bot.entity.isCollidedHorizontally) {
+      bot.setControlState('jump', true) 
+    } else {
+      bot.setControlState('jump', false) 
+    }
   }
 })
 
