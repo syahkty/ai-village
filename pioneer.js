@@ -187,13 +187,31 @@ bot.on('chat', async (username, message) => {
           const y = targetBlock.position.y
           const z = targetBlock.position.z
           
-          await bot.pathfinder.goto(new goals.GoalNear(x, y, z, 1))
+          // 1. JURUS JAGA JARAK: Angka 1 diganti jadi 3 agar tidak nabrak daun
+          await bot.pathfinder.goto(new goals.GoalNear(x, y, z, 3))
           await bot.dig(targetBlock)
         } catch (err) {
           if (err?.message === 'GoalChanged' || err?.name === 'GoalChanged') {
             await new Promise(resolve => setTimeout(resolve, 1000));
             continue; 
           } else {
+            // 2. INSTING TEBAS DAUN: Cek apakah ada daun yang menghalangi kepalanya
+            const daun = bot.findBlock({
+              matching: (block) => block && block.name && block.name.includes('leaves'),
+              maxDistance: 3 
+            });
+
+            if (daun) {
+              bot.chat('Daunnya menghalangi! Aku tebas daunnya dulu...');
+              try {
+                await bot.dig(daun); // Tebas daunnya
+                await new Promise(resolve => setTimeout(resolve, 500));
+                continue; // Coba tebang kayunya lagi setelah jalan terbuka
+              } catch (e) {
+                // Biarkan kalau gagal nebas daun
+              }
+            }
+
             bot.chat('Blok ini sulit dijangkau, cari yang lain...')
             // Format daftar hitam yang aman
             const posKey = `${targetBlock.position.x},${targetBlock.position.y},${targetBlock.position.z}`;
