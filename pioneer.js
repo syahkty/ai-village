@@ -235,6 +235,7 @@ bot.on('chat', async (username, message) => {
           } catch (e) {
              // Abaikan tabrakan saat antar
           }
+          
 
           const logs = bot.inventory.items().filter(item => item.name.includes('log'))
           
