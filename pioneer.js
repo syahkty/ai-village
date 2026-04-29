@@ -3,7 +3,7 @@ const { pathfinder, Movements, goals } = require('mineflayer-pathfinder')
 
 const bot = mineflayer.createBot({
   host: '127.0.0.1',
-  port: 25565,
+  port: 25568,
   username: 'PioneerBot'
 })
 
