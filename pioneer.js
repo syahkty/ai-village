@@ -263,11 +263,12 @@ bot.on('chat', async (username, message) => {
 })
 
 // ====================================================================
-// === SISTEM MONITORING ANTI-STUCK V4 (Anti-Looping) ===
+// === SISTEM MONITORING ANTI-STUCK V5 (Anti-Looping) ===
 // ====================================================================
 let posisiTerakhir = null;
 let waktuMacet = 0;
 let sedangPenyelamatan = false;
+let percobaanPenyelamatan = 0;
 
 bot.on('physicsTick', async () => {
   if (bot.pathfinder.goal && !sedangPenyelamatan) {
@@ -279,8 +280,11 @@ bot.on('physicsTick', async () => {
       
       if (bot.controlState.forward && jarakGerak < 0.05) {
         waktuMacet++;
-      } else {
+      } else if (jarakGerak > 0.1) {
         waktuMacet = 0; 
+        percobaanPenyelamatan = 0; // Reset jika bot sudah jalan normal
+      } else {
+        waktuMacet = 0;
       }
     }
     
@@ -288,10 +292,31 @@ bot.on('physicsTick', async () => {
 
     if (waktuMacet > 10) {
       sedangPenyelamatan = true;
+      percobaanPenyelamatan++;
       
       const tujuanBos = bot.pathfinder.goal;
       bot.pathfinder.setGoal(null);
       bot.clearControlStates();
+      
+      if (percobaanPenyelamatan > 2) {
+        bot.chat('Jalannya buntu! Aku coba cari jalan memutar...');
+        
+        // Mundur dan geser untuk mencari rute baru
+        const arahAcak = Math.random() > 0.5 ? 'left' : 'right';
+        bot.setControlState('back', true);
+        bot.setControlState(arahAcak, true);
+        await new Promise(resolve => setTimeout(resolve, 600));
+        bot.clearControlStates();
+        
+        if (tujuanBos) {
+          // Memaksa pathfinder membuat ulang jalur dari awal
+          bot.pathfinder.setGoal(tujuanBos, true); 
+        }
+        
+        waktuMacet = 0;
+        sedangPenyelamatan = false;
+        return;
+      }
       
       bot.setControlState('back', true);
       await new Promise(resolve => setTimeout(resolve, 150)); 
@@ -321,6 +346,9 @@ bot.on('physicsTick', async () => {
   else {
     posisiTerakhir = null;
     waktuMacet = 0;
+    if (!bot.pathfinder.goal && !sedangPenyelamatan) {
+      percobaanPenyelamatan = 0; // Reset jika sudah sampai tujuan / idle
+    }
   }
 });
 
