@@ -44,8 +44,35 @@ bot.on('chat', async (username, message) => {
       bot.chat(`Aku tidak melihatmu dari sini. Aku di koordinat X: ${Math.round(pos.x)}, Y: ${Math.round(pos.y)}, Z: ${Math.round(pos.z)}.`)
       return
     }
-    bot.chat(`Meluncur ke arah ${username}!`)
-    bot.pathfinder.setGoal(new goals.GoalFollow(targetPlayer.entity, 3), true)
+
+    // Cek apakah bot sedang membawa kayu
+    const logs = bot.inventory.items().filter(item => item.name.includes('log'))
+    
+    if (logs.length > 0) {
+      bot.chat(`Meluncur Bos! Kebetulan aku bawa hasil tebangan, mau kuantar sekalian.`);
+      try {
+        // Dekati Bos
+        await bot.pathfinder.goto(new goals.GoalNear(targetPlayer.entity.position.x, targetPlayer.entity.position.y, targetPlayer.entity.position.z, 2));
+        await bot.lookAt(targetPlayer.entity.position.offset(0, 1.5, 0));
+        
+        // Cek jarak untuk memastikan bot benar-benar sampai
+        const jarakKeBos = bot.entity.position.distanceTo(targetPlayer.entity.position);
+        if (jarakKeBos <= 4) {
+          for (const log of logs) {
+            await bot.tossStack(log);
+            await new Promise(resolve => setTimeout(resolve, 500));
+          }
+          bot.chat('Ini kayunya Bos! Jangan lupa ketik "menerima kayu" ya.');
+        } else {
+          bot.chat(`Bos, aku terhalang di tengah jalan! (Masih berjarak ${Math.round(jarakKeBos)} blok).`);
+        }
+      } catch (e) {
+        bot.chat('Aduh aku nyangkut di jalan. Samperin aku atau panggil "sini" lagi ya.');
+      }
+    } else {
+      bot.chat(`Meluncur ke arah ${username}!`)
+      bot.pathfinder.setGoal(new goals.GoalFollow(targetPlayer.entity, 3), true)
+    }
   } 
   
   else if (message === 'berhenti') {
