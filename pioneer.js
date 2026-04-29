@@ -214,8 +214,13 @@ bot.on('chat', async (username, message) => {
           const y = targetBlock.position.y
           const z = targetBlock.position.z
           
-          // 1. PENDEKATAN MAKSIMAL: Mendekat ke jarak 1 agar item kayu yang jatuh langsung terambil
-          await bot.pathfinder.goto(new goals.GoalNear(x, y, z, 1))
+          // 1. PENDEKATAN FLEKSIBEL: Jarak 2 agar tidak nyangkut saat menebang log di atas (Y+1)
+          await bot.pathfinder.goto(new goals.GoalNear(x, y, z, 2))
+          // Maju sedikit untuk memastikan item jatuh langsung terambil
+          bot.setControlState('forward', true)
+          await new Promise(resolve => setTimeout(resolve, 200))
+          bot.setControlState('forward', false)
+          
           await bot.dig(targetBlock)
         } catch (err) {
           if (err?.message === 'GoalChanged' || err?.name === 'GoalChanged') {
