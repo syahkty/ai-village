@@ -298,6 +298,19 @@ bot.on('physicsTick', async () => {
       bot.pathfinder.setGoal(null);
       bot.clearControlStates();
       
+      // INSTING TEBAS DAUN SAAT NYANGKUT: Cek daun yang menempel di sekitar tubuh bot
+      const daunNyangkut = bot.findBlock({
+        matching: (block) => block && block.name && block.name.includes('leaves'),
+        maxDistance: 2.5
+      });
+      
+      if (daunNyangkut) {
+        if (percobaanPenyelamatan % 2 === 1) {
+            bot.chat('Aduh nyangkut daun, pangkas dulu ah!');
+        }
+        try { await bot.dig(daunNyangkut); } catch(e) {}
+      }
+      
       if (percobaanPenyelamatan > 2) {
         bot.chat('Jalannya buntu! Aku coba cari jalan memutar...');
         
