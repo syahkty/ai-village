@@ -270,34 +270,39 @@ bot.on('chat', async (username, message) => {
 })
 
 // ====================================================================
-// === SISTEM MONITORING ANTI-STUCK V5 (Anti-Looping) ===
+// === SISTEM MONITORING ANTI-STUCK V6 (Anti-Looping) ===
 // ====================================================================
 let posisiTerakhir = null;
 let waktuMacet = 0;
 let sedangPenyelamatan = false;
 let percobaanPenyelamatan = 0;
+let tickCount = 0;
 
 bot.on('physicsTick', async () => {
   if (bot.pathfinder.goal && !sedangPenyelamatan) {
+    tickCount++;
     
-    const posisiSekarang = bot.entity.position.clone();
-    
-    if (posisiTerakhir) {
-      const jarakGerak = posisiSekarang.distanceTo(posisiTerakhir);
+    // Cek setiap 10 tick (0.5 detik) agar gerakan lompat (sumbu Y) tidak mengecoh deteksi
+    if (tickCount >= 10) {
+      const posisiSekarang = bot.entity.position.clone();
       
-      if (bot.controlState.forward && jarakGerak < 0.05) {
-        waktuMacet++;
-      } else if (jarakGerak > 0.1) {
-        waktuMacet = 0; 
-        percobaanPenyelamatan = 0; // Reset jika bot sudah jalan normal
-      } else {
-        waktuMacet = 0;
+      if (posisiTerakhir) {
+        const jarakGerak = posisiSekarang.distanceTo(posisiTerakhir);
+        
+        // Jika dalam 0.5 detik bot tidak berpindah lebih dari 0.5 blok (artinya nyangkut/loncat di tempat)
+        if (jarakGerak < 0.5) {
+          waktuMacet++;
+        } else {
+          waktuMacet = 0; 
+          percobaanPenyelamatan = 0; // Reset jika bot sudah jalan normal
+        }
       }
+      
+      posisiTerakhir = posisiSekarang;
+      tickCount = 0;
     }
-    
-    posisiTerakhir = posisiSekarang;
 
-    if (waktuMacet > 10) {
+    if (waktuMacet > 4) { // Berarti sudah 2 detik nyangkut di radius < 0.5 blok
       sedangPenyelamatan = true;
       percobaanPenyelamatan++;
       
