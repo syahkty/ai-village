@@ -3,7 +3,7 @@ const { pathfinder, Movements, goals } = require('mineflayer-pathfinder')
 
 const bot = mineflayer.createBot({
   host: '127.0.0.1',
-  port: 25568,
+  port: 25565,
   username: 'PioneerBot'
 })
 
@@ -235,7 +235,6 @@ bot.on('chat', async (username, message) => {
           } catch (e) {
              // Abaikan tabrakan saat antar
           }
-          
 
           const logs = bot.inventory.items().filter(item => item.name.includes('log'))
           
