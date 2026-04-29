@@ -233,20 +233,27 @@ bot.on('chat', async (username, message) => {
             await bot.pathfinder.goto(new goals.GoalNear(targetPlayer.position.x, targetPlayer.position.y, targetPlayer.position.z, 2))
             await bot.lookAt(targetPlayer.position.offset(0, 1.5, 0))
           } catch (e) {
-             // Abaikan tabrakan saat antar
+             // Abaikan tabrakan saat antar, pengecekan sukses/tidaknya ada di bawah
           }
 
-          const logs = bot.inventory.items().filter(item => item.name.includes('log'))
+          const jarakKeBos = bot.entity.position.distanceTo(targetPlayer.position);
           
-          if (logs.length > 0) {
-            for (const log of logs) {
-              await bot.tossStack(log) 
-              await new Promise(resolve => setTimeout(resolve, 500)) 
-            }
-            bot.chat('Ini hasil tebangannya, Bos! Tolong ambil lalu ketik "menerima kayu".')
+          if (jarakKeBos > 4) {
+            bot.chat(`Bos, jalanku tertutup! Aku nyangkut ${Math.round(jarakKeBos)} blok darimu.`);
+            bot.chat('Kayunya kusimpan di tas ya. Samperin aku atau ketik "sini" lagi.');
           } else {
-            bot.chat('Maaf Bos, kayunya tidak masuk ke inventory-ku.')
-            bot.chat('Ketik "menerima kayu" agar aku bisa reset tugas.')
+            const logs = bot.inventory.items().filter(item => item.name.includes('log'))
+            
+            if (logs.length > 0) {
+              for (const log of logs) {
+                await bot.tossStack(log) 
+                await new Promise(resolve => setTimeout(resolve, 500)) 
+              }
+              bot.chat('Ini hasil tebangannya, Bos! Tolong ambil lalu ketik "menerima kayu".')
+            } else {
+              bot.chat('Maaf Bos, kayunya tidak masuk ke inventory-ku.')
+              bot.chat('Ketik "menerima kayu" agar aku bisa reset tugas.')
+            }
           }
         } else {
           bot.chat('Bos di mana? Aku tidak melihatmu. Ketik "menerima kayu" untuk mereset tugasku.')
