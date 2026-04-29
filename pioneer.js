@@ -187,26 +187,26 @@ bot.on('chat', async (username, message) => {
           const y = targetBlock.position.y
           const z = targetBlock.position.z
           
-          // 1. JURUS JAGA JARAK: Angka 1 diganti jadi 3 agar tidak nabrak daun
-          await bot.pathfinder.goto(new goals.GoalNear(x, y, z, 3))
+          // 1. PENDEKATAN MAKSIMAL: Mendekat ke jarak 1 agar item kayu yang jatuh langsung terambil
+          await bot.pathfinder.goto(new goals.GoalNear(x, y, z, 1))
           await bot.dig(targetBlock)
         } catch (err) {
           if (err?.message === 'GoalChanged' || err?.name === 'GoalChanged') {
             await new Promise(resolve => setTimeout(resolve, 1000));
             continue; 
           } else {
-            // 2. INSTING TEBAS DAUN: Cek apakah ada daun yang menghalangi kepalanya
+            // 2. INSTING TEBAS DAUN: Jika gagal mendekat/menebang, pangkas daun yang menghalangi
             const daun = bot.findBlock({
               matching: (block) => block && block.name && block.name.includes('leaves'),
-              maxDistance: 3 
+              maxDistance: 4 
             });
 
             if (daun) {
-              bot.chat('Daunnya menghalangi! Aku tebas daunnya dulu...');
+              bot.chat('Daunnya menghalangi! Aku pangkas daunnya dulu...');
               try {
                 await bot.dig(daun); // Tebas daunnya
                 await new Promise(resolve => setTimeout(resolve, 500));
-                continue; // Coba tebang kayunya lagi setelah jalan terbuka
+                continue; // Coba dekati dan tebang kayunya lagi setelah jalan terbuka
               } catch (e) {
                 // Biarkan kalau gagal nebas daun
               }
