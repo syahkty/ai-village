@@ -55,6 +55,7 @@ async function simpanKePeti() {
   try {
     bot.chat('Peti ditemukan! Meluncur ke sana...');
     await bot.ashfinder.goto(new goals.GoalNear(petiBlok.position.x, petiBlok.position.y, petiBlok.position.z, 1.5));
+    if (!isWorking) { bot.chat('Batal simpan ke peti karena dihentikan.'); return false; }
     await bot.lookAt(petiBlok.position);
   } catch (err) {
     bot.chat('Aduh, jalanku menuju peti gagal...');
@@ -130,10 +131,13 @@ bot.on('chat', async (username, message) => {
     }
   } 
   
-  else if (message === 'berhenti') {
-    bot.ashfinder.stop()
-    isWorking = false 
-    bot.chat('Rem mendadak. Aku berhenti dan siap menerima perintah baru.')
+  // === FITUR BERHENTI DARURAT (EMERGENCY STOP) ===
+  else if (message === 'berhenti' || message === 'stop') {
+    isWorking = false; // Mematikan izin sistem agar semua perulangan (loop) terhenti
+    bot.ashfinder.stop(); // Berhenti jalan
+    bot.clearControlStates(); // Lepas semua tombol keyboard virtual
+    try { bot.stopDigging(); } catch(e) {} // Berhenti memukul blok
+    bot.chat('Rem darurat ditarik! Semua aktivitas dan pergerakan dibatalkan secara paksa.');
   }
 
   // === FITUR TES LOMPAT MANUAL ===
@@ -187,7 +191,8 @@ bot.on('chat', async (username, message) => {
     try {
       let hasChoppedSomething = false
 
-      while (true) {
+      // Ubah while (true) menjadi while (isWorking) agar bisa di-break oleh perintah stop
+      while (isWorking) {
         const logs = bot.inventory.items().filter(item => item.name.includes('log'))
         let kayuTerkumpul = logs.reduce((total, item) => total + item.count, 0)
 
@@ -225,13 +230,16 @@ bot.on('chat', async (username, message) => {
           
           // Pendekatan menggunakan Baritone (Ashfinder)
           await bot.ashfinder.goto(new goals.GoalNear(x, y, z, 2))
+          if (!isWorking) break; // Langsung keluar kalau disuruh stop saat lagi jalan
           
           bot.setControlState('forward', true)
           await new Promise(resolve => setTimeout(resolve, 200))
           bot.setControlState('forward', false)
           
+          if (!isWorking) break; // Keluar sebelum memukul blok
           await bot.dig(targetBlock)
         } catch (err) {
+          if (!isWorking) break; // Langsung putus loop kalau terhenti karena error stop
           if (err?.message === 'GoalChanged' || err?.name === 'GoalChanged') {
             await new Promise(resolve => setTimeout(resolve, 1000));
             continue; 
