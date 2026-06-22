@@ -12,6 +12,7 @@ bot.loadPlugin(loader)
 
 // === SISTEM STATUS KERJA ===
 let isWorking = false
+let followInterval = null // Tracking loop ikuti pemain
 
 bot.on('spawn', () => {
   console.log('PioneerBot mendarat dengan aman!')
@@ -182,23 +183,36 @@ bot.on('chat', async (username, message) => {
       console.log(`📍 [SINI] Ashfinder tersedia: ${!!bot.ashfinder}`)
       
       bot.chat(`Meluncur ke arah ${username}!`)
-      // Hentikan navigasi sebelumnya
-      bot.ashfinder.stop()
+      if (followInterval) { clearInterval(followInterval); followInterval = null }
       
-      // Gunakan GoalFollowEntity bawaan ashfinder (mengikuti entity secara kontinu)
-      try {
-        console.log('📍 [SINI] Memulai GoalFollowEntity...')
-        await bot.ashfinder.goto(new goals.GoalFollowEntity(targetPlayer.entity, 2))
-        console.log('📍 [SINI] GoalFollowEntity selesai')
-      } catch (e) {
-        console.log(`❌ [SINI] ERROR GoalFollowEntity:`, e.message || e)
+      const ikutiPemain = async () => {
+        const player = bot.players[username]
+        if (!player || !player.entity) {
+          console.log('📍 [FOLLOW] Player tidak terlihat, stop follow')
+          clearInterval(followInterval); followInterval = null
+          return
+        }
+        const p = player.entity.position
+        const jarak = bot.entity.position.distanceTo(p)
+        console.log(`📍 [FOLLOW] Jarak ke ${username}: ${jarak.toFixed(1)} blok`)
+        if (jarak > 3) {
+          try {
+            console.log(`📍 [FOLLOW] Update tujuan ke: X:${p.x.toFixed(1)}, Y:${p.y.toFixed(1)}, Z:${p.z.toFixed(1)}`)
+            await bot.ashfinder.goto(new goals.GoalNear(new Vec3(p.x, p.y, p.z), 2))
+          } catch (e) {}
+        }
       }
+      
+      console.log('📍 [SINI] Menjalankan ikutiPemain()...')
+      ikutiPemain()
+      followInterval = setInterval(ikutiPemain, 3000)
     }
   }
 
   // === FITUR BERHENTI DARURAT ===
   else if (message === 'berhenti' || message === 'stop') {
     isWorking = false
+    if (followInterval) { clearInterval(followInterval); followInterval = null }
     if (bot.ashfinder) bot.ashfinder.stop()
     bot.clearControlStates()
     try { bot.stopDigging() } catch (e) {}
