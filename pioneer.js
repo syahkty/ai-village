@@ -329,6 +329,7 @@ bot.on('chat', async (username, message) => {
       } else {
         isWorking = false 
       }
+      
     } catch (error) {
       bot.chat('Duh, ada error sistem (Cek Terminal VPS).')
       console.log(error)
