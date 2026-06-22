@@ -33,6 +33,67 @@ bot.on('death', () => {
   bot.chat('Waduh, aku mati! Mereset ulang posisiku...')
 })
 
+// === FUNGSI LOGISTIK DESA ===
+async function simpanKePeti() {
+  bot.chat('Mencari peti desa terdekat...');
+  
+  // 1. Cari peti (menggunakan ID blok chest)
+  const chestId = bot.registry.blocksByName.chest.id;
+  const petiPositions = bot.findBlocks({
+    matching: chestId,
+    maxDistance: 32,
+    count: 1
+  });
+
+  if (petiPositions.length === 0) {
+    bot.chat('Aduh, tidak ada peti di sekitarku (radius 32 blok). Kayunya kusimpan di tas ya.');
+    return false;
+  }
+
+  const petiBlok = bot.blockAt(petiPositions[0]);
+
+  // 2. Jalan menuju peti
+  try {
+    bot.chat('Peti ditemukan! Meluncur ke sana...');
+    // Jarak 1.5 agar cukup dekat untuk membuka peti
+    await bot.pathfinder.goto(new goals.GoalNear(petiBlok.position.x, petiBlok.position.y, petiBlok.position.z, 1.5));
+    await bot.lookAt(petiBlok.position);
+  } catch (err) {
+    bot.chat('Aduh, jalanku menuju peti terhalang sesuatu...');
+    return false;
+  }
+
+  // 3. Buka peti dan pindahkan kayu
+  try {
+    const peti = await bot.openChest(petiBlok);
+    bot.chat('Membuka peti desa...');
+    
+    const semuaItem = bot.inventory.items();
+    let adaKayu = false;
+
+    for (const item of semuaItem) {
+      if (item.name.includes('log')) {
+        adaKayu = true;
+        // Pindahkan ke peti
+        await peti.deposit(item.type, null, item.count);
+        await new Promise(resolve => setTimeout(resolve, 500)); // Jeda biar server tidak mengira bot spam
+      }
+    }
+    
+    peti.close();
+    
+    if (adaKayu) {
+      bot.chat('Selesai! Semua kayu sudah aman di dalam peti desa.');
+    } else {
+      bot.chat('Peti sudah kututup, tapi tadi tidak ada kayu di tasku.');
+    }
+    return true;
+  } catch (err) {
+    bot.chat('Gagal memindahkan barang ke peti: ' + err.message);
+    return false;
+  }
+}
+
 bot.on('chat', async (username, message) => {
   if (username === bot.username) return
 
@@ -257,39 +318,14 @@ bot.on('chat', async (username, message) => {
         bot.chat('Memungut sisa kayu yang jatuh...')
         await new Promise(resolve => setTimeout(resolve, 1500))
 
-        const targetPlayer = bot.players[username]?.entity
-        if (targetPlayer) {
-          bot.chat(`OTW mengantar kayu ke Bos!`)
-          
-          try {
-            await bot.pathfinder.goto(new goals.GoalNear(targetPlayer.position.x, targetPlayer.position.y, targetPlayer.position.z, 2))
-            await bot.lookAt(targetPlayer.position.offset(0, 1.5, 0))
-          } catch (e) {
-             // Abaikan tabrakan saat antar, pengecekan sukses/tidaknya ada di bawah
-          }
-
-          const jarakKeBos = bot.entity.position.distanceTo(targetPlayer.position);
-          
-          if (jarakKeBos > 4) {
-            bot.chat(`Bos, jalanku tertutup! Aku nyangkut ${Math.round(jarakKeBos)} blok darimu.`);
-            bot.chat('Kayunya kusimpan di tas ya. Samperin aku atau ketik "sini" lagi.');
-          } else {
-            const logs = bot.inventory.items().filter(item => item.name.includes('log'))
-            
-            if (logs.length > 0) {
-              for (const log of logs) {
-                await bot.tossStack(log) 
-                await new Promise(resolve => setTimeout(resolve, 500)) 
-              }
-              bot.chat('Ini hasil tebangannya, Bos! Tolong ambil lalu ketik "menerima kayu".')
-            } else {
-              bot.chat('Maaf Bos, kayunya tidak masuk ke inventory-ku.')
-              bot.chat('Ketik "menerima kayu" agar aku bisa reset tugas.')
-            }
-          }
-        } else {
-          bot.chat('Bos di mana? Aku tidak melihatmu. Ketik "menerima kayu" untuk mereset tugasku.')
+        // Panggil fungsi simpan ke peti
+        const berhasilSimpan = await simpanKePeti();
+        
+        if (!berhasilSimpan) {
+           bot.chat('Karena gagal masuk peti, ketik "menerima kayu" ya Bos kalau mau ambil manual dariku.');
         }
+        
+        isWorking = false; // Reset status agar bot bisa menerima perintah baru
       } else {
         isWorking = false 
       }
