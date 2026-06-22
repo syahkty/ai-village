@@ -174,19 +174,19 @@ bot.on('chat', async (username, message) => {
 
     bot.chat('Nempel tembok! Mundur dikit buat ambil ancang-ancang...');
     bot.setControlState('back', true);
-    await new Promise(resolve => setTimeout(resolve, 50)); 
+    await new Promise(resolve => setTimeout(resolve, 300)); // Fix: 50ms -> 300ms agar mundur ~1.3 blok
     bot.setControlState('back', false);
     
-    await new Promise(resolve => setTimeout(resolve, 50));
+    await new Promise(resolve => setTimeout(resolve, 100)); // Fix: jeda stabilisasi sebelum lompat
 
     bot.setControlState('jump', true);
-    await new Promise(resolve => setTimeout(resolve, 50)); 
+    await new Promise(resolve => setTimeout(resolve, 150)); // Fix: 50ms -> 150ms agar bot naik cukup tinggi
     
     bot.setControlState('forward', true); 
-    await new Promise(resolve => setTimeout(resolve, 250)); 
+    await new Promise(resolve => setTimeout(resolve, 300)); 
     
     bot.setControlState('jump', false); 
-    await new Promise(resolve => setTimeout(resolve, 300)); 
+    await new Promise(resolve => setTimeout(resolve, 250)); 
     
     bot.setControlState('forward', false); 
     bot.chat('Hap! Parkour berhasil dari jarak mana pun.');
@@ -346,8 +346,12 @@ let waktuMacet = 0;
 let sedangPenyelamatan = false;
 let percobaanPenyelamatan = 0;
 let tickCount = 0;
+let isProcessingTick = false; // Fix Bug 1: Guard untuk mencegah race condition async
 
 bot.on('physicsTick', async () => {
+  // Fix Bug 1: Cegah re-entrancy async — jika tick sebelumnya masih proses, skip
+  if (isProcessingTick) return;
+  
   if (bot.pathfinder.goal && !sedangPenyelamatan) {
     tickCount++;
     
@@ -356,14 +360,18 @@ bot.on('physicsTick', async () => {
       const posisiSekarang = bot.entity.position.clone();
       
       if (posisiTerakhir) {
-        const jarakGerak = posisiSekarang.distanceTo(posisiTerakhir);
+        // Fix Bug 4: Hitung jarak HORIZONTAL saja (X/Z), agar lompat vertikal tidak mengecoh
+        const dx = posisiSekarang.x - posisiTerakhir.x;
+        const dz = posisiSekarang.z - posisiTerakhir.z;
+        const jarakHorizontal = Math.sqrt(dx * dx + dz * dz);
         
-        // Jika dalam 0.5 detik bot tidak berpindah lebih dari 0.5 blok (artinya nyangkut/loncat di tempat)
-        if (jarakGerak < 0.5) {
+        // Jika dalam 0.5 detik bot tidak berpindah lebih dari 0.5 blok secara horizontal
+        if (jarakHorizontal < 0.5) {
           waktuMacet++;
         } else {
           waktuMacet = 0; 
-          percobaanPenyelamatan = 0; // Reset jika bot sudah jalan normal
+          // Fix Bug 5: Jangan reset percobaanPenyelamatan di sini,
+          // biar bot bisa eskalasi ke strategi "cari jalan memutar"
         }
       }
       
@@ -373,6 +381,7 @@ bot.on('physicsTick', async () => {
 
     if (waktuMacet > 4) { // Berarti sudah 2 detik nyangkut di radius < 0.5 blok
       sedangPenyelamatan = true;
+      isProcessingTick = true; // Fix Bug 1: Lock agar tick lain tidak masuk
       percobaanPenyelamatan++;
       
       const tujuanBos = bot.pathfinder.goal;
@@ -409,20 +418,21 @@ bot.on('physicsTick', async () => {
         
         waktuMacet = 0;
         sedangPenyelamatan = false;
+        isProcessingTick = false; // Fix Bug 1: Unlock
         return;
       }
       
       bot.setControlState('back', true);
-      await new Promise(resolve => setTimeout(resolve, 150)); 
+      await new Promise(resolve => setTimeout(resolve, 350)); // Fix Bug 3: 150ms -> 350ms agar mundur ~1.5 blok
       bot.setControlState('back', false);
       
-      await new Promise(resolve => setTimeout(resolve, 50)); 
+      await new Promise(resolve => setTimeout(resolve, 100)); // Fix: jeda stabilisasi
       
       bot.setControlState('jump', true);
-      await new Promise(resolve => setTimeout(resolve, 50)); 
+      await new Promise(resolve => setTimeout(resolve, 150)); // Fix Bug 2: 50ms -> 150ms agar lompat cukup tinggi
       
       bot.setControlState('forward', true); 
-      await new Promise(resolve => setTimeout(resolve, 300)); 
+      await new Promise(resolve => setTimeout(resolve, 350)); // Fix: sedikit lebih lama agar melewati blok
       
       bot.setControlState('jump', false); 
       await new Promise(resolve => setTimeout(resolve, 200)); 
@@ -435,13 +445,14 @@ bot.on('physicsTick', async () => {
       
       waktuMacet = 0;
       sedangPenyelamatan = false;
+      isProcessingTick = false; // Fix Bug 1: Unlock
     }
   } 
   else {
     posisiTerakhir = null;
     waktuMacet = 0;
     if (!bot.pathfinder.goal && !sedangPenyelamatan) {
-      percobaanPenyelamatan = 0; // Reset jika sudah sampai tujuan / idle
+      percobaanPenyelamatan = 0; // Fix Bug 5: Reset hanya saat benar-benar idle/sampai tujuan
     }
   }
 });
