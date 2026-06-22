@@ -185,6 +185,7 @@ bot.on('chat', async (username, message) => {
       bot.chat('Sip! Inventory-ku sudah bersih. Tugas selesai dan sistem siap menerima perintah baru.')
     }
   }
+  
 
   // === FITUR MENEBANG (RADAR ID SUPER CEPAT) ===
   else if (message.startsWith('tebang')) {
