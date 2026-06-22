@@ -19,15 +19,20 @@ bot.on('spawn', () => {
   console.log('PioneerBot mendarat dengan aman!')
   
   // Mengaktifkan fitur ajaib Baritone (Ashfinder)
-  bot.ashfinder.config.breakBlocks = true; // Bot akan menghancurkan daun/tanah yang menghalangi
-  bot.ashfinder.config.placeBlocks = true; // Bot akan menaruh blok untuk membuat jembatan/tangga
+  if (bot.ashfinder) {
+    bot.ashfinder.config.breakBlocks = true; // Bot akan menghancurkan daun/tanah yang menghalangi
+    bot.ashfinder.config.placeBlocks = true; // Bot akan menaruh blok untuk membuat jembatan/tangga
+    console.log('✅ Sistem Ashfinder (Baritone) berhasil dimuat!');
+  } else {
+    console.log('❌ PERINGATAN: Sistem Ashfinder tidak terdeteksi di dalam bot!');
+  }
   
   bot.chat('Sesi Cangkok Otak Baritone Selesai! Aku sudah jadi ahli parkour sekarang, Bos!')
 })
 
 bot.on('death', () => {
   console.log('Bot mati. Mereset sistem...')
-  bot.ashfinder.stop() 
+  if (bot.ashfinder) bot.ashfinder.stop() 
   isWorking = false 
   bot.chat('Waduh, aku mati! Mereset ulang posisiku...')
 })
@@ -58,6 +63,7 @@ async function simpanKePeti() {
     if (!isWorking) { bot.chat('Batal simpan ke peti karena dihentikan.'); return false; }
     await bot.lookAt(petiBlok.position);
   } catch (err) {
+    console.log('⚠️ [DEBUG] Error saat jalan ke peti:', err);
     bot.chat('Aduh, jalanku menuju peti gagal...');
     return false;
   }
@@ -87,6 +93,7 @@ async function simpanKePeti() {
     }
     return true;
   } catch (err) {
+    console.log('⚠️ [DEBUG] Error saat buka peti:', err);
     bot.chat('Gagal memindahkan barang ke peti: ' + err.message);
     return false;
   }
@@ -123,21 +130,37 @@ bot.on('chat', async (username, message) => {
           bot.chat(`Bos, aku terhalang di tengah jalan!`);
         }
       } catch (e) {
+        console.log('⚠️ [DEBUG] Error saat antar kayu ke bos:', e);
         bot.chat('Aduh aku nyangkut di jalan.');
       }
     } else {
       bot.chat(`Meluncur ke arah ${username}!`)
-      bot.ashfinder.goto(new goals.GoalFollow(targetPlayer.entity, 3))
+      try {
+        bot.ashfinder.goto(new goals.GoalFollow(targetPlayer.entity, 3))
+      } catch (e) {
+         console.log('⚠️ [DEBUG] Error saat jalan ikuti bos:', e);
+      }
     }
   } 
   
   // === FITUR BERHENTI DARURAT (EMERGENCY STOP) ===
   else if (message === 'berhenti' || message === 'stop') {
     isWorking = false; // Mematikan izin sistem agar semua perulangan (loop) terhenti
-    bot.ashfinder.stop(); // Berhenti jalan
+    if (bot.ashfinder) bot.ashfinder.stop(); // Berhenti jalan
     bot.clearControlStates(); // Lepas semua tombol keyboard virtual
     try { bot.stopDigging(); } catch(e) {} // Berhenti memukul blok
     bot.chat('Rem darurat ditarik! Semua aktivitas dan pergerakan dibatalkan secara paksa.');
+  }
+
+  // === FITUR DEBUGGING SYSTEM ===
+  else if (message === 'debug') {
+    bot.chat('Mencetak status debug ke Terminal VPS...');
+    console.log('================ DEBUG INFO ================');
+    console.log('Status isWorking:', isWorking);
+    console.log('Apakah Ashfinder siap?:', bot.ashfinder ? 'Ya' : 'TIDAK (Undefined)');
+    console.log('Posisi Bot:', bot.entity.position);
+    console.log('Isi Inventory:', bot.inventory.items().map(i => `${i.name} (x${i.count})`).join(', ') || 'Kosong');
+    console.log('============================================');
   }
 
   // === FITUR TES LOMPAT MANUAL ===
@@ -157,7 +180,7 @@ bot.on('chat', async (username, message) => {
     if (sisaKayu > 0) {
       bot.chat(`Tunggu Bos! Masih ada ${sisaKayu} kayu di tas-ku. Tolong ambil dulu kayunya yang jatuh, atau kosongkan tas-ku, baru ketik "menerima kayu".`)
     } else {
-      bot.ashfinder.stop() 
+      if (bot.ashfinder) bot.ashfinder.stop() 
       isWorking = false            
       bot.chat('Sip! Inventory-ku sudah bersih. Tugas selesai dan sistem siap menerima perintah baru.')
     }
@@ -244,6 +267,7 @@ bot.on('chat', async (username, message) => {
             await new Promise(resolve => setTimeout(resolve, 1000));
             continue; 
           } else {
+            console.log('⚠️ [DEBUG] Error saat mencari jalan ke pohon:', err);
             bot.chat('Blok ini sulit dijangkau, cari yang lain...')
             const posKey = `${targetBlock.position.x},${targetBlock.position.y},${targetBlock.position.z}`;
             ignoredBlocks.push(posKey);
@@ -269,10 +293,12 @@ bot.on('chat', async (username, message) => {
       
     } catch (error) {
       bot.chat('Duh, ada error sistem (Cek Terminal VPS).')
-      console.log(error)
+      console.log('🚨 [FATAL ERROR] Sistem tebang jebol:', error)
       isWorking = false
     } 
   }
 })
 
-bot.on('error', (err) => console.log(err))
+bot.on('error', (err) => {
+  console.log('🚨 [ERROR CORE MINEFLAYER]:', err)
+})
