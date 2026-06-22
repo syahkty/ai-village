@@ -349,13 +349,13 @@ bot.on('chat', async (username, message) => {
 // ====================================================================
 
 // --- Layer 1: Auto-Jump Proaktif (Bedrock-style) ---
-let lastAutoJumpY = 0;
+let lastAutoJumpTime = 0;
+const AUTO_JUMP_COOLDOWN = 500; // ms — cooldown agar tidak spam lompat
 
 function cekBlokPadat(pos) {
   if (!pos) return false;
   const blok = bot.blockAt(pos);
   if (!blok) return false;
-  // Blok padat = bukan udara, bukan air, bukan tanaman kecil, bukan blok transparan yg bisa dilewati
   return blok.boundingBox === 'block';
 }
 
@@ -364,56 +364,52 @@ bot.on('physicsTick', () => {
   if (!bot.pathfinder.goal && !bot.getControlState('forward')) return;
   // Jangan ganggu kalau sedang rescue
   if (sedangPenyelamatan) return;
-  // Jangan lompat kalau sedang di udara (belum mendarat dari lompat sebelumnya)
+  // KUNCI BEDROCK: Hanya lompat kalau SUDAH nempel tembok (collided horizontally)
+  if (!bot.entity.isCollidedHorizontally) return;
+  // Harus di tanah (jangan lompat lagi kalau masih di udara)
   if (!bot.entity.onGround) return;
+  
+  // Cooldown: jangan lompat lagi kalau baru lompat < 500ms lalu
+  const sekarang = Date.now();
+  if (sekarang - lastAutoJumpTime < AUTO_JUMP_COOLDOWN) return;
 
   const pos = bot.entity.position;
   const vel = bot.entity.velocity;
 
-  // Hitung arah gerak dari velocity. Kalau velocity terlalu kecil, pakai arah pandang (yaw)
-  let dx = vel.x;
-  let dz = vel.z;
-  const speed = Math.sqrt(dx * dx + dz * dz);
-  
-  if (speed < 0.01) {
-    // Velocity terlalu kecil, pakai arah pandang bot
-    const yaw = bot.entity.yaw;
-    dx = -Math.sin(yaw);
-    dz = -Math.cos(yaw);
-  } else {
-    // Normalisasi ke unit vector
-    dx /= speed;
-    dz /= speed;
-  }
+  // Hitung arah gerak — pakai yaw karena saat collided velocity biasanya ~0
+  const yaw = bot.entity.yaw;
+  const dx = -Math.sin(yaw);
+  const dz = -Math.cos(yaw);
 
-  // Cek titik 0.6 blok di depan (tepat di tepi hitbox bot, radius hitbox = 0.3)
-  const cekX = Math.floor(pos.x + dx * 0.6);
-  const cekZ = Math.floor(pos.z + dz * 0.6);
-  const kakinya = Math.floor(pos.y);      // Level kaki (Y)
-  
+  // Cek blok di depan
+  const cekX = Math.floor(pos.x + dx * 0.8);
+  const cekZ = Math.floor(pos.z + dz * 0.8);
+  const kakinya = Math.floor(pos.y);
 
-  // === DETEKSI OBSTACLE ===
-  // Cek apakah ada blok PADAT di level kaki (setinggi kaki bot)
+  // === VALIDASI: Obstacle HARUS tepat 1 blok tinggi ===
+  // Blok di level kaki harus padat (ini tembok yang ditabrak)
   const blokKaki = cekBlokPadat(new Vec3(cekX, kakinya, cekZ));
-  
-  if (!blokKaki) return; // Tidak ada halangan, skip
+  if (!blokKaki) return;
 
-  // === CEK BISA DILOMPATI ===
-  // Blok di atas obstacle harus kosong (2 blok ruang gerak agar badan bot muat)
-  const atasObstacle1 = cekBlokPadat(new Vec3(cekX, kakinya + 1, cekZ));
+  // Blok di atas obstacle harus KOSONG (kalau padat = tembok tinggi, jangan lompat!)
+  const atasObstacle = cekBlokPadat(new Vec3(cekX, kakinya + 1, cekZ));
+  if (atasObstacle) return; // Tembok lebih dari 1 blok — JANGAN LOMPAT
+
+  // Cek ruang kepala di atas obstacle (harus kosong juga)
   const atasObstacle2 = cekBlokPadat(new Vec3(cekX, kakinya + 2, cekZ));
-  
-  // Juga cek ruang di atas kepala bot (kalau ada langit-langit rendah jangan lompat)
-  const atasKepala = cekBlokPadat(new Vec3(Math.floor(pos.x), kakinya + 2, Math.floor(pos.z)));
+  if (atasObstacle2) return;
 
-  if (!atasObstacle1 && !atasObstacle2 && !atasKepala) {
-    // Obstacle 1 blok tinggi, ada ruang di atas → LOMPAT!
-    bot.setControlState('jump', true);
-    // Release jump setelah 1 tick agar tidak lompat berulang
-    setImmediate(() => {
-      bot.setControlState('jump', false);
-    });
-  }
+  // Cek langit-langit di atas bot sendiri
+  const atasKepala = cekBlokPadat(new Vec3(Math.floor(pos.x), kakinya + 2, Math.floor(pos.z)));
+  if (atasKepala) return;
+
+  // Semua validasi lolos → obstacle 1 blok, ada ruang di atas → LOMPAT!
+  lastAutoJumpTime = sekarang;
+  bot.setControlState('jump', true);
+  // Release jump setelah 1 tick
+  setImmediate(() => {
+    bot.setControlState('jump', false);
+  });
 });
 
 // --- Layer 2: Rescue Fallback (untuk stuck yang lebih parah) ---
