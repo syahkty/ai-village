@@ -1,5 +1,6 @@
 const mineflayer = require('mineflayer')
 const { pathfinder, Movements, goals } = require('mineflayer-pathfinder')
+const { Vec3 } = require('vec3')
 
 const bot = mineflayer.createBot({
   host: '127.0.0.1',
@@ -339,120 +340,208 @@ bot.on('chat', async (username, message) => {
 })
 
 // ====================================================================
-// === SISTEM MONITORING ANTI-STUCK V6 (Anti-Looping) ===
+// === SISTEM AUTO-JUMP BEDROCK EDITION V1 (Proaktif) ===
 // ====================================================================
+// Terinspirasi dari auto-jump Minecraft Bedrock yang lompat SEBELUM nabrak,
+// bukan SESUDAH stuck. Sistem ini punya 2 layer:
+//   Layer 1: Auto-Jump Proaktif — deteksi obstacle setiap tick, lompat instan
+//   Layer 2: Rescue Fallback — jika benar-benar stuck (lubang, terkurung, dll)
+// ====================================================================
+
+// --- Layer 1: Auto-Jump Proaktif (Bedrock-style) ---
+let lastAutoJumpY = 0;
+
+function cekBlokPadat(pos) {
+  if (!pos) return false;
+  const blok = bot.blockAt(pos);
+  if (!blok) return false;
+  // Blok padat = bukan udara, bukan air, bukan tanaman kecil, bukan blok transparan yg bisa dilewati
+  return blok.boundingBox === 'block';
+}
+
+bot.on('physicsTick', () => {
+  // Hanya aktif kalau bot sedang bergerak (ada goal / ada input forward)
+  if (!bot.pathfinder.goal && !bot.getControlState('forward')) return;
+  // Jangan ganggu kalau sedang rescue
+  if (sedangPenyelamatan) return;
+  // Jangan lompat kalau sedang di udara (belum mendarat dari lompat sebelumnya)
+  if (!bot.entity.onGround) return;
+
+  const pos = bot.entity.position;
+  const vel = bot.entity.velocity;
+
+  // Hitung arah gerak dari velocity. Kalau velocity terlalu kecil, pakai arah pandang (yaw)
+  let dx = vel.x;
+  let dz = vel.z;
+  const speed = Math.sqrt(dx * dx + dz * dz);
+  
+  if (speed < 0.01) {
+    // Velocity terlalu kecil, pakai arah pandang bot
+    const yaw = bot.entity.yaw;
+    dx = -Math.sin(yaw);
+    dz = -Math.cos(yaw);
+  } else {
+    // Normalisasi ke unit vector
+    dx /= speed;
+    dz /= speed;
+  }
+
+  // Cek titik 0.6 blok di depan (tepat di tepi hitbox bot, radius hitbox = 0.3)
+  const cekX = Math.floor(pos.x + dx * 0.6);
+  const cekZ = Math.floor(pos.z + dz * 0.6);
+  const kakinya = Math.floor(pos.y);      // Level kaki (Y)
+  
+
+  // === DETEKSI OBSTACLE ===
+  // Cek apakah ada blok PADAT di level kaki (setinggi kaki bot)
+  const blokKaki = cekBlokPadat(new Vec3(cekX, kakinya, cekZ));
+  
+  if (!blokKaki) return; // Tidak ada halangan, skip
+
+  // === CEK BISA DILOMPATI ===
+  // Blok di atas obstacle harus kosong (2 blok ruang gerak agar badan bot muat)
+  const atasObstacle1 = cekBlokPadat(new Vec3(cekX, kakinya + 1, cekZ));
+  const atasObstacle2 = cekBlokPadat(new Vec3(cekX, kakinya + 2, cekZ));
+  
+  // Juga cek ruang di atas kepala bot (kalau ada langit-langit rendah jangan lompat)
+  const atasKepala = cekBlokPadat(new Vec3(Math.floor(pos.x), kakinya + 2, Math.floor(pos.z)));
+
+  if (!atasObstacle1 && !atasObstacle2 && !atasKepala) {
+    // Obstacle 1 blok tinggi, ada ruang di atas → LOMPAT!
+    bot.setControlState('jump', true);
+    // Release jump setelah 1 tick agar tidak lompat berulang
+    setImmediate(() => {
+      bot.setControlState('jump', false);
+    });
+  }
+});
+
+// --- Layer 2: Rescue Fallback (untuk stuck yang lebih parah) ---
 let posisiTerakhir = null;
 let waktuMacet = 0;
 let sedangPenyelamatan = false;
 let percobaanPenyelamatan = 0;
-let tickCount = 0;
-let isProcessingTick = false; // Fix Bug 1: Guard untuk mencegah race condition async
+let tickCountRescue = 0;
+let isProcessingRescue = false;
 
 bot.on('physicsTick', async () => {
-  // Fix Bug 1: Cegah re-entrancy async — jika tick sebelumnya masih proses, skip
-  if (isProcessingTick) return;
+  if (isProcessingRescue) return;
   
   if (bot.pathfinder.goal && !sedangPenyelamatan) {
-    tickCount++;
+    tickCountRescue++;
     
-    // Cek setiap 10 tick (0.5 detik) agar gerakan lompat (sumbu Y) tidak mengecoh deteksi
-    if (tickCount >= 10) {
+    // Cek setiap 20 tick (1 detik) — lebih lama dari V6 karena Layer 1 sudah handle lompat ringan
+    if (tickCountRescue >= 20) {
       const posisiSekarang = bot.entity.position.clone();
       
       if (posisiTerakhir) {
-        // Fix Bug 4: Hitung jarak HORIZONTAL saja (X/Z), agar lompat vertikal tidak mengecoh
         const dx = posisiSekarang.x - posisiTerakhir.x;
         const dz = posisiSekarang.z - posisiTerakhir.z;
         const jarakHorizontal = Math.sqrt(dx * dx + dz * dz);
         
-        // Jika dalam 0.5 detik bot tidak berpindah lebih dari 0.5 blok secara horizontal
-        if (jarakHorizontal < 0.5) {
+        if (jarakHorizontal < 0.3) { // Lebih ketat: 0.3 blok karena Layer 1 sudah bantu
           waktuMacet++;
         } else {
-          waktuMacet = 0; 
-          // Fix Bug 5: Jangan reset percobaanPenyelamatan di sini,
-          // biar bot bisa eskalasi ke strategi "cari jalan memutar"
+          waktuMacet = 0;
         }
       }
       
       posisiTerakhir = posisiSekarang;
-      tickCount = 0;
+      tickCountRescue = 0;
     }
 
-    if (waktuMacet > 4) { // Berarti sudah 2 detik nyangkut di radius < 0.5 blok
+    // Sudah 3 detik stuck (3x cek @ 1 detik interval)
+    if (waktuMacet > 3) {
       sedangPenyelamatan = true;
-      isProcessingTick = true; // Fix Bug 1: Lock agar tick lain tidak masuk
+      isProcessingRescue = true;
       percobaanPenyelamatan++;
       
       const tujuanBos = bot.pathfinder.goal;
       bot.pathfinder.setGoal(null);
       bot.clearControlStates();
       
-      // INSTING TEBAS DAUN SAAT NYANGKUT: Cek daun yang menempel di sekitar tubuh bot
+      // --- TEBAS DAUN OTOMATIS ---
+      // Cek daun di sekitar tubuh bot (penyebab stuck paling umum di hutan)
       const daunNyangkut = bot.findBlock({
         matching: (block) => block && block.name && block.name.includes('leaves'),
-        maxDistance: 2.5
+        maxDistance: 2
       });
       
       if (daunNyangkut) {
-        if (percobaanPenyelamatan % 2 === 1) {
-            bot.chat('Aduh nyangkut daun, pangkas dulu ah!');
+        if (percobaanPenyelamatan <= 2) {
+          bot.chat('Daun menghalangi, pangkas dulu!');
         }
         try { await bot.dig(daunNyangkut); } catch(e) {}
-      }
-      
-      if (percobaanPenyelamatan > 2) {
-        bot.chat('Jalannya buntu! Aku coba cari jalan memutar...');
-        
-        // Mundur dan geser untuk mencari rute baru
-        const arahAcak = Math.random() > 0.5 ? 'left' : 'right';
-        bot.setControlState('back', true);
-        bot.setControlState(arahAcak, true);
-        await new Promise(resolve => setTimeout(resolve, 600));
-        bot.clearControlStates();
-        
-        if (tujuanBos) {
-          // Memaksa pathfinder membuat ulang jalur dari awal
-          bot.pathfinder.setGoal(tujuanBos, true); 
-        }
-        
+        // Setelah tebas daun, langsung coba lanjut tanpa manuver
+        if (tujuanBos) bot.pathfinder.setGoal(tujuanBos);
         waktuMacet = 0;
         sedangPenyelamatan = false;
-        isProcessingTick = false; // Fix Bug 1: Unlock
+        isProcessingRescue = false;
         return;
       }
+
+      // --- STRATEGI ESKALASI ---
+      if (percobaanPenyelamatan <= 2) {
+        // Percobaan 1-2: Lompat mundur + maju (mirip Step Up yang lebih kuat)
+        bot.setControlState('back', true);
+        await new Promise(resolve => setTimeout(resolve, 400));
+        bot.setControlState('back', false);
+        
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        bot.setControlState('jump', true);
+        bot.setControlState('forward', true);
+        await new Promise(resolve => setTimeout(resolve, 400));
+        
+        bot.setControlState('jump', false);
+        await new Promise(resolve => setTimeout(resolve, 200));
+        bot.clearControlStates();
+        
+      } else if (percobaanPenyelamatan <= 4) {
+        // Percobaan 3-4: Geser ke samping + lompat (cari rute alternatif)
+        bot.chat('Aku cari jalan lain...');
+        const arah = percobaanPenyelamatan % 2 === 0 ? 'left' : 'right';
+        
+        bot.setControlState('back', true);
+        bot.setControlState(arah, true);
+        await new Promise(resolve => setTimeout(resolve, 500));
+        bot.clearControlStates();
+        
+        bot.setControlState('jump', true);
+        bot.setControlState('forward', true);
+        await new Promise(resolve => setTimeout(resolve, 400));
+        bot.clearControlStates();
+        
+      } else {
+        // Percobaan 5+: Reroute total — paksa pathfinder hitung ulang dari posisi baru
+        bot.chat('Jalannya buntu total! Reroute jalur...');
+        
+        // Mundur jauh + geser
+        const arah = Math.random() > 0.5 ? 'left' : 'right';
+        bot.setControlState('back', true);
+        bot.setControlState(arah, true);
+        await new Promise(resolve => setTimeout(resolve, 800));
+        bot.clearControlStates();
+        
+        // Reset counter agar mulai dari strategi 1 lagi di posisi baru
+        percobaanPenyelamatan = 0;
+      }
       
-      bot.setControlState('back', true);
-      await new Promise(resolve => setTimeout(resolve, 350)); // Fix Bug 3: 150ms -> 350ms agar mundur ~1.5 blok
-      bot.setControlState('back', false);
-      
-      await new Promise(resolve => setTimeout(resolve, 100)); // Fix: jeda stabilisasi
-      
-      bot.setControlState('jump', true);
-      await new Promise(resolve => setTimeout(resolve, 150)); // Fix Bug 2: 50ms -> 150ms agar lompat cukup tinggi
-      
-      bot.setControlState('forward', true); 
-      await new Promise(resolve => setTimeout(resolve, 350)); // Fix: sedikit lebih lama agar melewati blok
-      
-      bot.setControlState('jump', false); 
-      await new Promise(resolve => setTimeout(resolve, 200)); 
-      
-      bot.clearControlStates(); 
-      
+      // Lanjutkan ke tujuan semula
       if (tujuanBos) {
-        bot.pathfinder.setGoal(tujuanBos);
+        bot.pathfinder.setGoal(tujuanBos, true); // true = paksa recalculate path
       }
       
       waktuMacet = 0;
       sedangPenyelamatan = false;
-      isProcessingTick = false; // Fix Bug 1: Unlock
+      isProcessingRescue = false;
     }
   } 
   else {
     posisiTerakhir = null;
     waktuMacet = 0;
     if (!bot.pathfinder.goal && !sedangPenyelamatan) {
-      percobaanPenyelamatan = 0; // Fix Bug 5: Reset hanya saat benar-benar idle/sampai tujuan
+      percobaanPenyelamatan = 0;
     }
   }
 });
