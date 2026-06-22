@@ -1,5 +1,6 @@
 const mineflayer = require('mineflayer')
-const { pathfinder, Movements, goals } = require('mineflayer-pathfinder')
+// Menggunakan loader dari mineflayer-baritone (ashfinder)
+const { loader, goals } = require('@miner-org/mineflayer-baritone')
 const { Vec3 } = require('vec3')
 
 const bot = mineflayer.createBot({
@@ -8,7 +9,8 @@ const bot = mineflayer.createBot({
   username: 'PioneerBot'
 })
 
-bot.loadPlugin(pathfinder)
+// Memuat plugin navigasi tingkat dewa
+bot.loadPlugin(loader)
 
 // === SISTEM STATUS KERJA ===
 let isWorking = false 
@@ -16,20 +18,16 @@ let isWorking = false
 bot.on('spawn', () => {
   console.log('PioneerBot mendarat dengan aman!')
   
-  const defaultMove = new Movements(bot, bot.registry)
+  // Mengaktifkan fitur ajaib Baritone (Ashfinder)
+  bot.ashfinder.config.breakBlocks = true; // Bot akan menghancurkan daun/tanah yang menghalangi
+  bot.ashfinder.config.placeBlocks = true; // Bot akan menaruh blok untuk membuat jembatan/tangga
   
-  defaultMove.canDig = false     
-  defaultMove.allowParkour = true 
-  defaultMove.allowSprints = true 
-  defaultMove.maxDropDown = 3      
-  
-  bot.pathfinder.setMovements(defaultMove)
-  bot.chat('Sesi Fisioterapi Selesai. Otot kakiku sudah diperbaiki, Bos!')
+  bot.chat('Sesi Cangkok Otak Baritone Selesai! Aku sudah jadi ahli parkour sekarang, Bos!')
 })
 
 bot.on('death', () => {
   console.log('Bot mati. Mereset sistem...')
-  bot.pathfinder.setGoal(null) 
+  bot.ashfinder.stop() 
   isWorking = false 
   bot.chat('Waduh, aku mati! Mereset ulang posisiku...')
 })
@@ -53,14 +51,13 @@ async function simpanKePeti() {
 
   const petiBlok = bot.blockAt(petiPositions[0]);
 
-  // 2. Jalan menuju peti
+  // 2. Jalan menuju peti menggunakan Ashfinder
   try {
     bot.chat('Peti ditemukan! Meluncur ke sana...');
-    // Jarak 1.5 agar cukup dekat untuk membuka peti
-    await bot.pathfinder.goto(new goals.GoalNear(petiBlok.position.x, petiBlok.position.y, petiBlok.position.z, 1.5));
+    await bot.ashfinder.goto(new goals.GoalNear(petiBlok.position.x, petiBlok.position.y, petiBlok.position.z, 1.5));
     await bot.lookAt(petiBlok.position);
   } catch (err) {
-    bot.chat('Aduh, jalanku menuju peti terhalang sesuatu...');
+    bot.chat('Aduh, jalanku menuju peti gagal...');
     return false;
   }
 
@@ -75,9 +72,8 @@ async function simpanKePeti() {
     for (const item of semuaItem) {
       if (item.name.includes('log')) {
         adaKayu = true;
-        // Pindahkan ke peti
         await peti.deposit(item.type, null, item.count);
-        await new Promise(resolve => setTimeout(resolve, 500)); // Jeda biar server tidak mengira bot spam
+        await new Promise(resolve => setTimeout(resolve, 500)); 
       }
     }
     
@@ -107,17 +103,14 @@ bot.on('chat', async (username, message) => {
       return
     }
 
-    // Cek apakah bot sedang membawa kayu
     const logs = bot.inventory.items().filter(item => item.name.includes('log'))
     
     if (logs.length > 0) {
-      bot.chat(`Meluncur Bos! Kebetulan aku bawa hasil tebangan, mau kuantar sekalian.`);
+      bot.chat(`Meluncur Bos! Kebetulan aku bawa hasil tebangan.`);
       try {
-        // Dekati Bos
-        await bot.pathfinder.goto(new goals.GoalNear(targetPlayer.entity.position.x, targetPlayer.entity.position.y, targetPlayer.entity.position.z, 2));
+        await bot.ashfinder.goto(new goals.GoalNear(targetPlayer.entity.position.x, targetPlayer.entity.position.y, targetPlayer.entity.position.z, 2));
         await bot.lookAt(targetPlayer.entity.position.offset(0, 1.5, 0));
         
-        // Cek jarak untuk memastikan bot benar-benar sampai
         const jarakKeBos = bot.entity.position.distanceTo(targetPlayer.entity.position);
         if (jarakKeBos <= 4) {
           for (const log of logs) {
@@ -126,19 +119,19 @@ bot.on('chat', async (username, message) => {
           }
           bot.chat('Ini kayunya Bos! Jangan lupa ketik "menerima kayu" ya.');
         } else {
-          bot.chat(`Bos, aku terhalang di tengah jalan! (Masih berjarak ${Math.round(jarakKeBos)} blok).`);
+          bot.chat(`Bos, aku terhalang di tengah jalan!`);
         }
       } catch (e) {
-        bot.chat('Aduh aku nyangkut di jalan. Samperin aku atau panggil "sini" lagi ya.');
+        bot.chat('Aduh aku nyangkut di jalan.');
       }
     } else {
       bot.chat(`Meluncur ke arah ${username}!`)
-      bot.pathfinder.setGoal(new goals.GoalFollow(targetPlayer.entity, 3), true)
+      bot.ashfinder.goto(new goals.GoalFollow(targetPlayer.entity, 3))
     }
   } 
   
   else if (message === 'berhenti') {
-    bot.pathfinder.setGoal(null)
+    bot.ashfinder.stop()
     isWorking = false 
     bot.chat('Rem mendadak. Aku berhenti dan siap menerima perintah baru.')
   }
@@ -152,47 +145,6 @@ bot.on('chat', async (username, message) => {
     }, 300);
   }
 
-  // === FITUR TES LOMPAT MAJU (Auto-Positioning Sempurna) ===
-  else if (message === 'lompat maju') {
-    bot.chat('Menganalisis jarak... Mencari posisi parkour ideal.');
-    
-    const target = bot.players[username]?.entity;
-    if (target) {
-      await bot.lookAt(target.position.offset(0, 1.5, 0));
-    }
-
-    if (!bot.entity.isCollidedHorizontally) {
-      bot.chat('Terlalu jauh. Aku jalan maju dulu sampai ketemu bloknya...');
-      bot.setControlState('forward', true);
-      
-      let waktuPencarian = 0;
-      while (!bot.entity.isCollidedHorizontally && waktuPencarian < 60) {
-        await new Promise(resolve => setTimeout(resolve, 50)); 
-        waktuPencarian++;
-      }
-      bot.setControlState('forward', false);
-    }
-
-    bot.chat('Nempel tembok! Mundur dikit buat ambil ancang-ancang...');
-    bot.setControlState('back', true);
-    await new Promise(resolve => setTimeout(resolve, 300)); // Fix: 50ms -> 300ms agar mundur ~1.3 blok
-    bot.setControlState('back', false);
-    
-    await new Promise(resolve => setTimeout(resolve, 100)); // Fix: jeda stabilisasi sebelum lompat
-
-    bot.setControlState('jump', true);
-    await new Promise(resolve => setTimeout(resolve, 150)); // Fix: 50ms -> 150ms agar bot naik cukup tinggi
-    
-    bot.setControlState('forward', true); 
-    await new Promise(resolve => setTimeout(resolve, 300)); 
-    
-    bot.setControlState('jump', false); 
-    await new Promise(resolve => setTimeout(resolve, 250)); 
-    
-    bot.setControlState('forward', false); 
-    bot.chat('Hap! Parkour berhasil dari jarak mana pun.');
-  }
-
   // === FITUR KONFIRMASI DENGAN PENGECEKAN INVENTORY ===
   else if (message === 'menerima kayu') {
     const logs = bot.inventory.items().filter(item => item.name.includes('log'))
@@ -201,13 +153,13 @@ bot.on('chat', async (username, message) => {
     if (sisaKayu > 0) {
       bot.chat(`Tunggu Bos! Masih ada ${sisaKayu} kayu di tas-ku. Tolong ambil dulu kayunya yang jatuh, atau kosongkan tas-ku, baru ketik "menerima kayu".`)
     } else {
-      bot.pathfinder.setGoal(null) 
+      bot.ashfinder.stop() 
       isWorking = false            
       bot.chat('Sip! Inventory-ku sudah bersih. Tugas selesai dan sistem siap menerima perintah baru.')
     }
   }
 
-  // === FITUR MENEBANG (RADAR ID SUPER CEPAT & ANTI-BUTA) ===
+  // === FITUR MENEBANG (RADAR ID SUPER CEPAT) ===
   else if (message.startsWith('tebang')) {
     if (isWorking) {
       bot.chat('Sabar Bos, aku masih ngerjain tugas sebelumnya! Ketik "berhenti" kalau mau membatalkan.')
@@ -228,8 +180,6 @@ bot.on('chat', async (username, message) => {
     }
 
     let ignoredBlocks = []; 
-
-    // AMBIL SEMUA ID KAYU YANG ADA DI SERVER (Radar ID)
     const logBlockIds = bot.registry.blocksArray.filter(b => b.name.includes('log')).map(b => b.id);
 
     bot.chat(`Siap laksanakan! Mencari minimal ${targetKayu} kayu...`)
@@ -238,7 +188,6 @@ bot.on('chat', async (username, message) => {
       let hasChoppedSomething = false
 
       while (true) {
-        // Cek isi tas
         const logs = bot.inventory.items().filter(item => item.name.includes('log'))
         let kayuTerkumpul = logs.reduce((total, item) => total + item.count, 0)
 
@@ -248,20 +197,18 @@ bot.on('chat', async (username, message) => {
           break
         }
 
-        // TEKNIK RADAR: Cari 50 koordinat kayu terdekat menggunakan ID
         const targetPositions = bot.findBlocks({
           matching: logBlockIds,
           maxDistance: 32,
           count: 50
         });
 
-        // Seleksi 1 koordinat kayu yang belum masuk daftar hitam
         let targetBlock = null;
         for (const pos of targetPositions) {
           const posKey = `${pos.x},${pos.y},${pos.z}`;
           if (!ignoredBlocks.includes(posKey)) {
-            targetBlock = bot.blockAt(pos); // Konversi koordinat jadi blok
-            break; // Dapatkan yang pertama (paling dekat)
+            targetBlock = bot.blockAt(pos); 
+            break; 
           }
         }
 
@@ -276,9 +223,9 @@ bot.on('chat', async (username, message) => {
           const y = targetBlock.position.y
           const z = targetBlock.position.z
           
-          // 1. PENDEKATAN FLEKSIBEL: Jarak 2 agar tidak nyangkut saat menebang log di atas (Y+1)
-          await bot.pathfinder.goto(new goals.GoalNear(x, y, z, 2))
-          // Maju sedikit untuk memastikan item jatuh langsung terambil
+          // Pendekatan menggunakan Baritone (Ashfinder)
+          await bot.ashfinder.goto(new goals.GoalNear(x, y, z, 2))
+          
           bot.setControlState('forward', true)
           await new Promise(resolve => setTimeout(resolve, 200))
           bot.setControlState('forward', false)
@@ -289,25 +236,7 @@ bot.on('chat', async (username, message) => {
             await new Promise(resolve => setTimeout(resolve, 1000));
             continue; 
           } else {
-            // 2. INSTING TEBAS DAUN: Jika gagal mendekat/menebang, pangkas daun yang menghalangi
-            const daun = bot.findBlock({
-              matching: (block) => block && block.name && block.name.includes('leaves'),
-              maxDistance: 4 
-            });
-
-            if (daun) {
-              bot.chat('Daunnya menghalangi! Aku pangkas daunnya dulu...');
-              try {
-                await bot.dig(daun); // Tebas daunnya
-                await new Promise(resolve => setTimeout(resolve, 500));
-                continue; // Coba dekati dan tebang kayunya lagi setelah jalan terbuka
-              } catch (e) {
-                // Biarkan kalau gagal nebas daun
-              }
-            }
-
             bot.chat('Blok ini sulit dijangkau, cari yang lain...')
-            // Format daftar hitam yang aman
             const posKey = `${targetBlock.position.x},${targetBlock.position.y},${targetBlock.position.z}`;
             ignoredBlocks.push(posKey);
             await new Promise(resolve => setTimeout(resolve, 500));
@@ -319,14 +248,13 @@ bot.on('chat', async (username, message) => {
         bot.chat('Memungut sisa kayu yang jatuh...')
         await new Promise(resolve => setTimeout(resolve, 1500))
 
-        // Panggil fungsi simpan ke peti
         const berhasilSimpan = await simpanKePeti();
         
         if (!berhasilSimpan) {
            bot.chat('Karena gagal masuk peti, ketik "menerima kayu" ya Bos kalau mau ambil manual dariku.');
         }
         
-        isWorking = false; // Reset status agar bot bisa menerima perintah baru
+        isWorking = false; 
       } else {
         isWorking = false 
       }
@@ -338,208 +266,5 @@ bot.on('chat', async (username, message) => {
     } 
   }
 })
-
-// ====================================================================
-// === SISTEM AUTO-JUMP BEDROCK EDITION V1 (Proaktif) ===
-// ====================================================================
-// Terinspirasi dari auto-jump Minecraft Bedrock yang lompat SEBELUM nabrak,
-// bukan SESUDAH stuck. Sistem ini punya 2 layer:
-//   Layer 1: Auto-Jump Proaktif — deteksi obstacle setiap tick, lompat instan
-//   Layer 2: Rescue Fallback — jika benar-benar stuck (lubang, terkurung, dll)
-// ====================================================================
-
-// --- Layer 1: Auto-Jump Proaktif (Bedrock-style) ---
-let lastAutoJumpTime = 0;
-const AUTO_JUMP_COOLDOWN = 500; // ms — cooldown agar tidak spam lompat
-
-function cekBlokPadat(pos) {
-  if (!pos) return false;
-  const blok = bot.blockAt(pos);
-  if (!blok) return false;
-  return blok.boundingBox === 'block';
-}
-
-bot.on('physicsTick', () => {
-  // Hanya aktif kalau bot sedang bergerak (ada goal / ada input forward)
-  if (!bot.pathfinder.goal && !bot.getControlState('forward')) return;
-  // Jangan ganggu kalau sedang rescue
-  if (sedangPenyelamatan) return;
-  // KUNCI BEDROCK: Hanya lompat kalau SUDAH nempel tembok (collided horizontally)
-  if (!bot.entity.isCollidedHorizontally) return;
-  // Harus di tanah (jangan lompat lagi kalau masih di udara)
-  if (!bot.entity.onGround) return;
-  
-  // Cooldown: jangan lompat lagi kalau baru lompat < 500ms lalu
-  const sekarang = Date.now();
-  if (sekarang - lastAutoJumpTime < AUTO_JUMP_COOLDOWN) return;
-
-  const pos = bot.entity.position;
-  const vel = bot.entity.velocity;
-
-  // Hitung arah gerak — pakai yaw karena saat collided velocity biasanya ~0
-  const yaw = bot.entity.yaw;
-  const dx = -Math.sin(yaw);
-  const dz = -Math.cos(yaw);
-
-  // Cek blok di depan
-  const cekX = Math.floor(pos.x + dx * 0.8);
-  const cekZ = Math.floor(pos.z + dz * 0.8);
-  const kakinya = Math.floor(pos.y);
-
-  // === VALIDASI: Obstacle HARUS tepat 1 blok tinggi ===
-  // Blok di level kaki harus padat (ini tembok yang ditabrak)
-  const blokKaki = cekBlokPadat(new Vec3(cekX, kakinya, cekZ));
-  if (!blokKaki) return;
-
-  // Blok di atas obstacle harus KOSONG (kalau padat = tembok tinggi, jangan lompat!)
-  const atasObstacle = cekBlokPadat(new Vec3(cekX, kakinya + 1, cekZ));
-  if (atasObstacle) return; // Tembok lebih dari 1 blok — JANGAN LOMPAT
-
-  // Cek ruang kepala di atas obstacle (harus kosong juga)
-  const atasObstacle2 = cekBlokPadat(new Vec3(cekX, kakinya + 2, cekZ));
-  if (atasObstacle2) return;
-
-  // Cek langit-langit di atas bot sendiri
-  const atasKepala = cekBlokPadat(new Vec3(Math.floor(pos.x), kakinya + 2, Math.floor(pos.z)));
-  if (atasKepala) return;
-
-  // Semua validasi lolos → obstacle 1 blok, ada ruang di atas → LOMPAT!
-  lastAutoJumpTime = sekarang;
-  bot.setControlState('jump', true);
-  // Release jump setelah 1 tick
-  setImmediate(() => {
-    bot.setControlState('jump', false);
-  });
-});
-
-// --- Layer 2: Rescue Fallback (untuk stuck yang lebih parah) ---
-let posisiTerakhir = null;
-let waktuMacet = 0;
-let sedangPenyelamatan = false;
-let percobaanPenyelamatan = 0;
-let tickCountRescue = 0;
-let isProcessingRescue = false;
-
-bot.on('physicsTick', async () => {
-  if (isProcessingRescue) return;
-  
-  if (bot.pathfinder.goal && !sedangPenyelamatan) {
-    tickCountRescue++;
-    
-    // Cek setiap 20 tick (1 detik) — lebih lama dari V6 karena Layer 1 sudah handle lompat ringan
-    if (tickCountRescue >= 20) {
-      const posisiSekarang = bot.entity.position.clone();
-      
-      if (posisiTerakhir) {
-        const dx = posisiSekarang.x - posisiTerakhir.x;
-        const dz = posisiSekarang.z - posisiTerakhir.z;
-        const jarakHorizontal = Math.sqrt(dx * dx + dz * dz);
-        
-        if (jarakHorizontal < 0.3) { // Lebih ketat: 0.3 blok karena Layer 1 sudah bantu
-          waktuMacet++;
-        } else {
-          waktuMacet = 0;
-        }
-      }
-      
-      posisiTerakhir = posisiSekarang;
-      tickCountRescue = 0;
-    }
-
-    // Sudah 3 detik stuck (3x cek @ 1 detik interval)
-    if (waktuMacet > 3) {
-      sedangPenyelamatan = true;
-      isProcessingRescue = true;
-      percobaanPenyelamatan++;
-      
-      const tujuanBos = bot.pathfinder.goal;
-      bot.pathfinder.setGoal(null);
-      bot.clearControlStates();
-      
-      // --- TEBAS DAUN OTOMATIS ---
-      // Cek daun di sekitar tubuh bot (penyebab stuck paling umum di hutan)
-      const daunNyangkut = bot.findBlock({
-        matching: (block) => block && block.name && block.name.includes('leaves'),
-        maxDistance: 2
-      });
-      
-      if (daunNyangkut) {
-        if (percobaanPenyelamatan <= 2) {
-          bot.chat('Daun menghalangi, pangkas dulu!');
-        }
-        try { await bot.dig(daunNyangkut); } catch(e) {}
-        // Setelah tebas daun, langsung coba lanjut tanpa manuver
-        if (tujuanBos) bot.pathfinder.setGoal(tujuanBos);
-        waktuMacet = 0;
-        sedangPenyelamatan = false;
-        isProcessingRescue = false;
-        return;
-      }
-
-      // --- STRATEGI ESKALASI ---
-      if (percobaanPenyelamatan <= 2) {
-        // Percobaan 1-2: Lompat mundur + maju (mirip Step Up yang lebih kuat)
-        bot.setControlState('back', true);
-        await new Promise(resolve => setTimeout(resolve, 400));
-        bot.setControlState('back', false);
-        
-        await new Promise(resolve => setTimeout(resolve, 100));
-        
-        bot.setControlState('jump', true);
-        bot.setControlState('forward', true);
-        await new Promise(resolve => setTimeout(resolve, 400));
-        
-        bot.setControlState('jump', false);
-        await new Promise(resolve => setTimeout(resolve, 200));
-        bot.clearControlStates();
-        
-      } else if (percobaanPenyelamatan <= 4) {
-        // Percobaan 3-4: Geser ke samping + lompat (cari rute alternatif)
-        bot.chat('Aku cari jalan lain...');
-        const arah = percobaanPenyelamatan % 2 === 0 ? 'left' : 'right';
-        
-        bot.setControlState('back', true);
-        bot.setControlState(arah, true);
-        await new Promise(resolve => setTimeout(resolve, 500));
-        bot.clearControlStates();
-        
-        bot.setControlState('jump', true);
-        bot.setControlState('forward', true);
-        await new Promise(resolve => setTimeout(resolve, 400));
-        bot.clearControlStates();
-        
-      } else {
-        // Percobaan 5+: Reroute total — paksa pathfinder hitung ulang dari posisi baru
-        bot.chat('Jalannya buntu total! Reroute jalur...');
-        
-        // Mundur jauh + geser
-        const arah = Math.random() > 0.5 ? 'left' : 'right';
-        bot.setControlState('back', true);
-        bot.setControlState(arah, true);
-        await new Promise(resolve => setTimeout(resolve, 800));
-        bot.clearControlStates();
-        
-        // Reset counter agar mulai dari strategi 1 lagi di posisi baru
-        percobaanPenyelamatan = 0;
-      }
-      
-      // Lanjutkan ke tujuan semula
-      if (tujuanBos) {
-        bot.pathfinder.setGoal(tujuanBos, true); // true = paksa recalculate path
-      }
-      
-      waktuMacet = 0;
-      sedangPenyelamatan = false;
-      isProcessingRescue = false;
-    }
-  } 
-  else {
-    posisiTerakhir = null;
-    waktuMacet = 0;
-    if (!bot.pathfinder.goal && !sedangPenyelamatan) {
-      percobaanPenyelamatan = 0;
-    }
-  }
-});
 
 bot.on('error', (err) => console.log(err))
