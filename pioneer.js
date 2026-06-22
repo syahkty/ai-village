@@ -12,12 +12,14 @@ bot.loadPlugin(loader)
 
 // === SISTEM STATUS KERJA ===
 let isWorking = false
+let followInterval = null // Untuk tracking loop ikuti pemain
 
 bot.on('spawn', () => {
   console.log('PioneerBot mendarat dengan aman!')
   if (bot.ashfinder) {
-    bot.ashfinder.config.breakBlocks = true
-    bot.ashfinder.config.placeBlocks = true
+    // JANGAN aktifkan breakBlocks — akan menghancurkan tanah/batu untuk buat jalur
+    bot.ashfinder.config.breakBlocks = false
+    bot.ashfinder.config.placeBlocks = false
     console.log('✅ Sistem Ashfinder (Baritone) berhasil dimuat!')
   } else {
     console.log('❌ PERINGATAN: Sistem Ashfinder tidak terdeteksi di dalam bot!')
@@ -171,18 +173,40 @@ bot.on('chat', async (username, message) => {
       }
     } else {
       bot.chat(`Meluncur ke arah ${username}!`)
-      try {
-        // GoalFollow TIDAK di-await karena bersifat kontinu (bot terus mengikuti player).
-        bot.ashfinder.goto(new goals.GoalFollow(targetPlayer.entity, 3))
-      } catch (e) {
-        console.log('⚠️ [DEBUG] Error saat jalan ikuti bos:', e)
+      // Hentikan follow sebelumnya jika masih berjalan
+      if (followInterval) { clearInterval(followInterval); followInterval = null }
+      
+      // GoalFollow TIDAK didukung ashfinder → implementasi manual: 
+      // Setiap 3 detik, update posisi tujuan ke lokasi terbaru pemain.
+      const ikutiPemain = async () => {
+        const player = bot.players[username]
+        if (!player || !player.entity) {
+          clearInterval(followInterval)
+          followInterval = null
+          return
+        }
+        const p = player.entity.position
+        const jarak = bot.entity.position.distanceTo(p)
+        if (jarak > 3) {
+          try {
+            await bot.ashfinder.goto(new goals.GoalNear(p.x, p.y, p.z, 2))
+          } catch (e) {
+            // Bisa error kalau goal berubah, abaikan
+          }
+        }
       }
+      // Jalankan pertama kali langsung
+      ikutiPemain()
+      // Lalu update setiap 3 detik
+      followInterval = setInterval(ikutiPemain, 3000)
     }
   }
 
   // === FITUR BERHENTI DARURAT ===
   else if (message === 'berhenti' || message === 'stop') {
     isWorking = false
+    // Hentikan follow loop jika aktif
+    if (followInterval) { clearInterval(followInterval); followInterval = null }
     if (bot.ashfinder) bot.ashfinder.stop()
     bot.clearControlStates()
     try { bot.stopDigging() } catch (e) {}
@@ -308,9 +332,16 @@ bot.on('chat', async (username, message) => {
           await bot.ashfinder.goto(new goals.GoalNear(x, y, z, 2))
           if (!isWorking) break
 
-          // [FIX #8] Re-fetch blok setelah navigasi — referensi `targetBlock` lama bisa BASI.
-          // Skenario: bot lagi di perjalanan, pemain lain hancurkan pohon itu duluan.
-          // Kalau langsung dig(targetBlock) lama, bot akan error / memukul udara.
+          // VALIDASI JARAK: Pastikan bot BENAR-BENAR sampai dekat blok kayu sebelum dig.
+          // ashfinder.goto() bisa resolve tanpa error meski bot belum sampai (stuck/timeout).
+          const jarakKeTarget = bot.entity.position.distanceTo(new Vec3(x, y, z))
+          if (jarakKeTarget > 5) {
+            console.log(`[INFO] Bot masih terlalu jauh (${jarakKeTarget.toFixed(1)} blok) dari kayu, skip.`)
+            ignoredBlocks.add(`${x},${y},${z}`)
+            continue
+          }
+
+          // Re-fetch blok setelah navigasi — referensi lama bisa basi.
           const blokSegar = bot.blockAt(new Vec3(x, y, z))
           if (!blokSegar || !logBlockIds.includes(blokSegar.type)) {
             console.log('[INFO] Blok sudah tidak ada/bukan kayu lagi setelah navigasi, skip.')
@@ -320,9 +351,8 @@ bot.on('chat', async (username, message) => {
 
           if (!isWorking) break
 
-          // [FIX #9] DIHAPUS: bot.setControlState('forward', true) + sleep 200ms
-          // Nudge maju ini BERBAHAYA — bisa mendorong bot ke tebing, air, atau lava
-          // karena arahnya tidak selalu menghadap ke blok kayu. Baritone sudah cukup dekat.
+          // Hadapkan bot ke arah blok kayu sebelum menebang
+          await bot.lookAt(new Vec3(x + 0.5, y + 0.5, z + 0.5))
 
           await bot.dig(blokSegar)
 
