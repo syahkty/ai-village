@@ -12,7 +12,6 @@ bot.loadPlugin(loader)
 
 // === SISTEM STATUS KERJA ===
 let isWorking = false
-let followInterval = null // Untuk tracking loop ikuti pemain
 
 bot.on('spawn', () => {
   console.log('PioneerBot mendarat dengan aman!')
@@ -69,7 +68,7 @@ async function simpanKePeti() {
   try {
     bot.chat('Peti ditemukan! Meluncur ke sana...')
     await bot.ashfinder.goto(
-      new goals.GoalNear(petiBlok.position.x, petiBlok.position.y, petiBlok.position.z, 1.5)
+      new goals.GoalNear(new Vec3(petiBlok.position.x, petiBlok.position.y, petiBlok.position.z), 1.5)
     )
     if (!isWorking) {
       bot.chat('Batal simpan ke peti karena dihentikan.')
@@ -152,7 +151,7 @@ bot.on('chat', async (username, message) => {
         const destPos = targetPlayer.entity.position
         console.log(`📍 [SINI] Goto posisi bos: X:${destPos.x.toFixed(1)}, Y:${destPos.y.toFixed(1)}, Z:${destPos.z.toFixed(1)}`)
         console.log(`📍 [SINI] Ashfinder tersedia: ${!!bot.ashfinder}`)
-        await bot.ashfinder.goto(new goals.GoalNear(destPos.x, destPos.y, destPos.z, 2))
+        await bot.ashfinder.goto(new goals.GoalNear(new Vec3(destPos.x, destPos.y, destPos.z), 2))
         console.log(`📍 [SINI] Goto SELESAI (dengan kayu)`)
 
         if (!targetPlayer.entity) {
@@ -181,49 +180,25 @@ bot.on('chat', async (username, message) => {
     } else {
       console.log(`📍 [SINI] Tidak ada kayu, masuk mode FOLLOW`)
       console.log(`📍 [SINI] Ashfinder tersedia: ${!!bot.ashfinder}`)
-      console.log(`📍 [SINI] GoalNear tersedia: ${!!goals.GoalNear}`)
       
       bot.chat(`Meluncur ke arah ${username}!`)
-      // Hentikan follow sebelumnya jika masih berjalan
-      if (followInterval) { clearInterval(followInterval); followInterval = null }
+      // Hentikan navigasi sebelumnya
+      bot.ashfinder.stop()
       
-      // Langsung goto sekali ke posisi pemain (bukan loop dulu, tes apakah goto berfungsi)
-      const ikutiPemain = async () => {
-        const player = bot.players[username]
-        if (!player || !player.entity) {
-          console.log('📍 [FOLLOW] Player tidak terlihat lagi, stop follow')
-          clearInterval(followInterval)
-          followInterval = null
-          return
-        }
-        const p = player.entity.position
-        const jarak = bot.entity.position.distanceTo(p)
-        console.log(`📍 [FOLLOW] Jarak ke ${username}: ${jarak.toFixed(1)} blok`)
-        if (jarak > 3) {
-          try {
-            console.log(`📍 [FOLLOW] Memulai goto ke X:${p.x.toFixed(1)}, Y:${p.y.toFixed(1)}, Z:${p.z.toFixed(1)}`)
-            await bot.ashfinder.goto(new goals.GoalNear(p.x, p.y, p.z, 2))
-            console.log(`📍 [FOLLOW] Goto SELESAI`)
-          } catch (e) {
-            console.log(`❌ [FOLLOW] ERROR saat goto:`, e.message || e)
-          }
-        } else {
-          console.log('📍 [FOLLOW] Sudah cukup dekat, skip goto')
-        }
+      // Gunakan GoalFollowEntity bawaan ashfinder (mengikuti entity secara kontinu)
+      try {
+        console.log('📍 [SINI] Memulai GoalFollowEntity...')
+        await bot.ashfinder.goto(new goals.GoalFollowEntity(targetPlayer.entity, 2))
+        console.log('📍 [SINI] GoalFollowEntity selesai')
+      } catch (e) {
+        console.log(`❌ [SINI] ERROR GoalFollowEntity:`, e.message || e)
       }
-      // Jalankan pertama kali langsung
-      console.log('📍 [SINI] Menjalankan ikutiPemain() pertama kali...')
-      ikutiPemain()
-      // Lalu update setiap 3 detik
-      followInterval = setInterval(ikutiPemain, 3000)
     }
   }
 
   // === FITUR BERHENTI DARURAT ===
   else if (message === 'berhenti' || message === 'stop') {
     isWorking = false
-    // Hentikan follow loop jika aktif
-    if (followInterval) { clearInterval(followInterval); followInterval = null }
     if (bot.ashfinder) bot.ashfinder.stop()
     bot.clearControlStates()
     try { bot.stopDigging() } catch (e) {}
@@ -346,7 +321,7 @@ bot.on('chat', async (username, message) => {
         try {
           const { x, y, z } = targetBlock.position
 
-          await bot.ashfinder.goto(new goals.GoalNear(x, y, z, 2))
+          await bot.ashfinder.goto(new goals.GoalNear(new Vec3(x, y, z), 2))
           if (!isWorking) break
 
           // VALIDASI JARAK: Pastikan bot BENAR-BENAR sampai dekat blok kayu sebelum dig.
