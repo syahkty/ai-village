@@ -132,7 +132,11 @@ bot.on('chat', async (username, message) => {
 
   // === FITUR NAVIGASI ===
   if (message === 'sini') {
+    console.log(`\n📍 [SINI] Perintah 'sini' diterima dari: ${username}`)
     const targetPlayer = bot.players[username]
+    console.log(`📍 [SINI] Player ditemukan di bot.players: ${!!targetPlayer}`)
+    console.log(`📍 [SINI] Player punya entity: ${!!(targetPlayer && targetPlayer.entity)}`)
+    
     if (!targetPlayer || !targetPlayer.entity) {
       const pos = bot.entity.position
       bot.chat(`Aku tidak melihatmu dari sini. Aku di X:${Math.round(pos.x)}, Y:${Math.round(pos.y)}, Z:${Math.round(pos.z)}.`)
@@ -140,12 +144,16 @@ bot.on('chat', async (username, message) => {
     }
 
     const logs = bot.inventory.items().filter(item => item.name.includes('log'))
+    console.log(`📍 [SINI] Kayu di inventory: ${logs.length} stack`)
 
     if (logs.length > 0) {
       bot.chat(`Meluncur Bos! Kebetulan aku bawa hasil tebangan.`)
       try {
         const destPos = targetPlayer.entity.position
+        console.log(`📍 [SINI] Goto posisi bos: X:${destPos.x.toFixed(1)}, Y:${destPos.y.toFixed(1)}, Z:${destPos.z.toFixed(1)}`)
+        console.log(`📍 [SINI] Ashfinder tersedia: ${!!bot.ashfinder}`)
         await bot.ashfinder.goto(new goals.GoalNear(destPos.x, destPos.y, destPos.z, 2))
+        console.log(`📍 [SINI] Goto SELESAI (dengan kayu)`)
 
         if (!targetPlayer.entity) {
           bot.chat('Bos kabur kemana nih...')
@@ -154,10 +162,9 @@ bot.on('chat', async (username, message) => {
 
         await bot.lookAt(targetPlayer.entity.position.offset(0, 1.5, 0))
         const jarakKeBos = bot.entity.position.distanceTo(targetPlayer.entity.position)
+        console.log(`📍 [SINI] Jarak ke bos setelah goto: ${jarakKeBos.toFixed(1)} blok`)
 
         if (jarakKeBos <= 4) {
-          // [FIX #4] Ambil ulang inventory SEKARANG (bukan snapshot lama dari awal perintah).
-          // Selama navigasi, bot bisa memungut kayu lagi — snapshot lama akan kehilangan item baru itu.
           const logsSekarang = bot.inventory.items().filter(item => item.name.includes('log'))
           for (const log of logsSekarang) {
             await bot.tossStack(log)
@@ -168,34 +175,44 @@ bot.on('chat', async (username, message) => {
           bot.chat(`Bos, aku terhalang di tengah jalan!`)
         }
       } catch (e) {
-        console.log('⚠️ [DEBUG] Error saat antar kayu ke bos:', e)
+        console.log('❌ [SINI] ERROR saat antar kayu ke bos:', e)
         bot.chat('Aduh aku nyangkut di jalan.')
       }
     } else {
+      console.log(`📍 [SINI] Tidak ada kayu, masuk mode FOLLOW`)
+      console.log(`📍 [SINI] Ashfinder tersedia: ${!!bot.ashfinder}`)
+      console.log(`📍 [SINI] GoalNear tersedia: ${!!goals.GoalNear}`)
+      
       bot.chat(`Meluncur ke arah ${username}!`)
       // Hentikan follow sebelumnya jika masih berjalan
       if (followInterval) { clearInterval(followInterval); followInterval = null }
       
-      // GoalFollow TIDAK didukung ashfinder → implementasi manual: 
-      // Setiap 3 detik, update posisi tujuan ke lokasi terbaru pemain.
+      // Langsung goto sekali ke posisi pemain (bukan loop dulu, tes apakah goto berfungsi)
       const ikutiPemain = async () => {
         const player = bot.players[username]
         if (!player || !player.entity) {
+          console.log('📍 [FOLLOW] Player tidak terlihat lagi, stop follow')
           clearInterval(followInterval)
           followInterval = null
           return
         }
         const p = player.entity.position
         const jarak = bot.entity.position.distanceTo(p)
+        console.log(`📍 [FOLLOW] Jarak ke ${username}: ${jarak.toFixed(1)} blok`)
         if (jarak > 3) {
           try {
+            console.log(`📍 [FOLLOW] Memulai goto ke X:${p.x.toFixed(1)}, Y:${p.y.toFixed(1)}, Z:${p.z.toFixed(1)}`)
             await bot.ashfinder.goto(new goals.GoalNear(p.x, p.y, p.z, 2))
+            console.log(`📍 [FOLLOW] Goto SELESAI`)
           } catch (e) {
-            // Bisa error kalau goal berubah, abaikan
+            console.log(`❌ [FOLLOW] ERROR saat goto:`, e.message || e)
           }
+        } else {
+          console.log('📍 [FOLLOW] Sudah cukup dekat, skip goto')
         }
       }
       // Jalankan pertama kali langsung
+      console.log('📍 [SINI] Menjalankan ikutiPemain() pertama kali...')
       ikutiPemain()
       // Lalu update setiap 3 detik
       followInterval = setInterval(ikutiPemain, 3000)
