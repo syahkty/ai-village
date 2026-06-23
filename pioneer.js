@@ -380,3 +380,49 @@ process.on('unhandledRejection', (reason) => {
     return;
   }
 });
+
+// === SISTEM PELUMAS HITBOX (MICRO-STRAFE ANTI-SANGKUT) ===
+let monitorSangkut = 0;
+let posisiTerakhir = null;
+
+bot.on('physicsTick', () => {
+  // Hanya pantau jika bot sedang bekerja dan navigasi Baritone sedang aktif jalan
+  if (!isWorking || !bot.ashfinder || !bot.ashfinder.isPathing) {
+    monitorSangkut = 0;
+    return;
+  }
+
+  const posisiSekarang = bot.entity.position;
+  
+  if (posisiTerakhir) {
+    // Hitung jarak pergeseran bot dalam 1 tick (1/20 detik)
+    const jarak = posisiSekarang.distanceTo(posisiTerakhir);
+    
+    // Jika bot menekan tombol 'Maju' (W) tapi jarak geraknya < 0.05 blok (Nyangkut Fisik)
+    if (jarak < 0.05 && bot.getControlState('forward')) {
+      monitorSangkut++;
+    } else if (jarak > 0.05) {
+      monitorSangkut = 0; // Pergerakan lancar
+    }
+
+    // Jika nyangkut lebih dari 1 detik (20 ticks) di sudut blok
+    if (monitorSangkut > 20) {
+      console.log('⚠️ [ANTI-SANGKUT] Bahu bot nyangkut di sudut hitbox! Melakukan Micro-Strafe...');
+      
+      // Geser tipis ke kiri atau kanan untuk meloloskan bahu dari sudut
+      const arahGeser = Math.random() > 0.5 ? 'left' : 'right';
+      bot.setControlState(arahGeser, true);
+      bot.setControlState('jump', true); // Lompatan kecil membantu lepas dari pijakan tak rata
+      
+      // Lepas tombol setelah 250 milidetik agar tidak merusak rute asli Baritone
+      setTimeout(() => {
+        bot.setControlState(arahGeser, false);
+        bot.setControlState('jump', false);
+      }, 250);
+
+      monitorSangkut = 0; // Reset sensor
+    }
+  }
+  
+  posisiTerakhir = posisiSekarang.clone();
+});
