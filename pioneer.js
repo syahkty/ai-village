@@ -202,6 +202,7 @@ bot.on('chat', async (username, message) => {
   if (username === bot.username) return
 
   // === FITUR NAVIGASI ===
+ // === FITUR NAVIGASI ===
   if (message === 'sini') {
     const targetPlayer = bot.players[username]
     if (!targetPlayer || !targetPlayer.entity) return
@@ -210,6 +211,10 @@ bot.on('chat', async (username, message) => {
 
     if (logs.length > 0) {
       bot.chat(`Meluncur Bos! Kebetulan aku bawa hasil tebangan.`)
+      
+      // [FIX 1]: Beri tahu otak bot bahwa dia sedang bekerja mengantar kayu!
+      isWorking = true; 
+
       try {
         if (bot.ashfinder) bot.ashfinder.stop() 
         const destPos = targetPlayer.entity.position
@@ -218,6 +223,8 @@ bot.on('chat', async (username, message) => {
         while (isWorking && !sampaiBos) {
           try { await bot.ashfinder.goto(new goals.GoalNear(new Vec3(destPos.x, destPos.y, destPos.z), 2)) } catch(e) {}
           
+          if (!isWorking) break; // Keluar dari loop jika tiba-tiba disuruh "stop" di tengah jalan
+
           if (isRescuing) {
             while(isRescuing) await new Promise(r => setTimeout(r, 50));
             continue;
@@ -226,7 +233,14 @@ bot.on('chat', async (username, message) => {
           else break;
         }
 
-        if (!targetPlayer.entity) return
+        // [FIX 2]: Jika pengiriman dihentikan di tengah jalan, jangan lempar kayunya!
+        if (!isWorking || !sampaiBos) {
+          bot.chat('Pengiriman dibatalkan.');
+          isWorking = false;
+          return;
+        }
+
+        if (!targetPlayer.entity) { isWorking = false; return; }
         await bot.lookAt(targetPlayer.entity.position.offset(0, 1.5, 0))
 
         const logsSekarang = bot.inventory.items().filter(item => item.name.includes('log'))
@@ -235,8 +249,13 @@ bot.on('chat', async (username, message) => {
           await new Promise(resolve => setTimeout(resolve, 500))
         }
         bot.chat('Ini kayunya Bos! Jangan lupa ketik "menerima kayu" ya.')
+        
+        // [FIX 3]: Pengiriman sukses, kembalikan status jadi nganggur
+        isWorking = false; 
+
       } catch (e) {
         bot.chat('Aduh aku nyangkut di jalan.')
+        isWorking = false; // Pastikan di-reset jika terjadi error
       }
     } else {
       bot.chat(`Membuntuti ${username} dengan radar Baritone!`)
