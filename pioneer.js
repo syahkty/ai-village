@@ -20,14 +20,23 @@ bot.on('spawn', () => {
     bot.ashfinder.config.breakBlocks = true
     bot.ashfinder.config.placeBlocks = true
     bot.ashfinder.config.parkour = true
-    console.log('✅ Sistem Ashfinder (Baritone) berhasil dimuat!')
+    
+    // === JURUS DEBUGGING DARI GITHUB BARITONE ===
+    // 1. Enable debug mode to see what's happening
+    bot.ashfinder.debug = true; 
+
+    // 2. Increase thinking timeout (60 detik) agar tidak gampang menyerah di hutan
+    bot.ashfinder.thinkTimeout = 60000; 
+    // ============================================
+
+    console.log('✅ Sistem Ashfinder (Baritone) berhasil dimuat dengan DEBUG MODE AKTIF!')
     bot.ashfinder.on('pathStarted', (data) => {
       if (debugNav) drawPath(data.path)
     })
   } else {
     console.log('❌ PERINGATAN: Sistem Ashfinder tidak terdeteksi di dalam bot!')
   }
-  bot.chat('Siap bekerja dengan Otak Baritone, Bos!')
+  bot.chat('Siap bekerja! Otak Baritone & Mode Debug sudah menyala, Bos!')
 })
 
 bot.on('death', () => {
@@ -181,7 +190,9 @@ bot.on('chat', async (username, message) => {
       // MENGGUNAKAN GOAL FOLLOW BAWAAN BARITONE (Tanpa SetInterval!)
       bot.chat(`Membuntuti ${username} dengan cerdas!`)
       if (bot.ashfinder) bot.ashfinder.stop() // REM SEBELUM JALAN
-      bot.ashfinder.goto(new goals.GoalFollow(targetPlayer.entity, 3))
+      bot.ashfinder.goto(new goals.GoalFollow(targetPlayer.entity, 3)).catch(e => {
+        console.log('⚠️ [DEBUG] Batal follow:', e.message)
+      })
     }
   }
 
@@ -203,6 +214,16 @@ bot.on('chat', async (username, message) => {
     console.log('Posisi Bot:', bot.entity.position)
     console.log('Inventory:', bot.inventory.items().map(i => `${i.name}(x${i.count})`).join(', ') || 'Kosong')
     console.log('============================================')
+  }
+
+  // === FITUR VISUALISASI RUTE ===
+  else if (message === 'debug nav on') {
+    debugNav = true
+    bot.chat('Visualisasi rute AKTIF! (Bot butuh OP untuk menggambar partikel)')
+  }
+  else if (message === 'debug nav off') {
+    debugNav = false
+    bot.chat('Visualisasi rute dimatikan.')
   }
 
   // === FITUR KONFIRMASI MENERIMA KAYU ===
