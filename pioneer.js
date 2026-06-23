@@ -407,3 +407,4 @@ bot.on('chat', async (username, message) => {
 bot.on('error', (err) => {
   console.log('🚨 [ERROR CORE MINEFLAYER]:', err)
 })
+
