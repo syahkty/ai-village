@@ -381,54 +381,61 @@ process.on('unhandledRejection', (reason) => {
   }
 });
 
-// === SISTEM RESCUE: PEMECAH KEBODOHAN BOT (ANTI-STUCK V3) ===
+// === SISTEM RESCUE: PEMECAH KEBODOHAN BOT (ANTI-STUCK V4 + DEBUG) ===
 let rescueTick = 0;
 let lastRescuePos = null;
 let isRescuing = false;
 
 bot.on('physicsTick', async () => {
-  // Jangan diganggu kalau bot sedang istirahat atau sedang diselamatkan
-  if (!isWorking || isRescuing) {
-    rescueTick = 0;
-    return;
-  }
+  // Jika sedang diselamatkan, jangan ditimpa
+  if (isRescuing) return;
 
-  // Apakah bot sedang mencoba jalan maju (disuruh Baritone)?
-  if (bot.getControlState('forward')) {
+  // Cek apakah bot sedang mencoba maju, kiri, atau kanan (Baritone sedang aktif)
+  const isTryingToMove = bot.getControlState('forward') || bot.getControlState('left') || bot.getControlState('right');
+  
+  if (isTryingToMove) {
     rescueTick++;
 
-    // Cek posisi setiap 1 detik (20 ticks)
+    // Lakukan pengecekan setiap 1 detik (20 ticks)
     if (rescueTick >= 20) {
       const currentPos = bot.entity.position.clone();
 
       if (lastRescuePos) {
-        const dist = currentPos.distanceTo(lastRescuePos);
+        // Hitung jarak HORIZONTAL (X dan Z saja). 
+        // Abaikan Y agar bot tidak menipu sistem dengan cara lompat di tempat.
+        const dx = currentPos.x - lastRescuePos.x;
+        const dz = currentPos.z - lastRescuePos.z;
+        const dist2D = Math.sqrt(dx * dx + dz * dz);
 
-        // Jika bot disuruh maju tapi jarak tempuhnya < 0.5 blok dalam 1 detik = STUCK PARAH!
-        if (dist < 0.5) {
-          console.log('⚠️ [RESCUE] Bot bertingkah bodoh/nyangkut! Mengambil alih kendali paksa...');
+        // Tampilkan jarak tempuh bot per 1 detik di terminal PM2
+        console.log(`[DEBUG RESCUE] Bot mencoba jalan... Jarak gerak 1 dtk terakhir: ${dist2D.toFixed(2)} blok`);
+
+        // Jika disuruh jalan tapi dalam 1 detik bergeraknya kurang dari 0.3 blok = STUCK DI SUDUT!
+        if (dist2D < 0.3) {
+          console.log('⚠️ [RESCUE AKTIF] Bot terdeteksi nyangkut di sudut blok!');
           isRescuing = true;
 
-          // 1. TAMPAR MESIN BARITONE (Matikan paksa agar tidak rebutan keyboard)
+          // 1. Matikan Baritone paksa agar tidak rebutan keyboard
           if (bot.ashfinder) bot.ashfinder.stop();
           bot.clearControlStates();
 
-          // 2. MANUVER PELEPASAN MANUAL
-          // Mundur sedikit untuk melepaskan bahu dari sudut
+          // 2. Mundur sedikit menjauh dari sudut
+          console.log('   -> Menarik bot mundur...');
           bot.setControlState('back', true);
-          await new Promise(r => setTimeout(r, 400));
+          await new Promise(r => setTimeout(r, 450));
           bot.setControlState('back', false);
 
-          // Geser ke samping secara acak sambil melompat maju
+          // 3. Geser menyamping sambil lompat maju
+          console.log('   -> Lompat & Geser untuk mencari sela blok...');
           const arahGeser = Math.random() > 0.5 ? 'left' : 'right';
           bot.setControlState(arahGeser, true);
           bot.setControlState('jump', true);
           bot.setControlState('forward', true);
           
-          await new Promise(r => setTimeout(r, 600)); // Tahan selama 0.6 detik
+          await new Promise(r => setTimeout(r, 600)); 
 
-          // 3. KEMBALIKAN KENDALI
-          // Lepas semua tombol, lalu biarkan loop utama memanggil ulang rute Baritone
+          // 4. Selesai manuver, Baritone akan otomatis memanggil goto() baru dari loop atas
+          console.log('   -> Manuver selesai! Mengembalikan kendali ke AI Baritone.');
           bot.clearControlStates();
           isRescuing = false;
         }
@@ -438,7 +445,7 @@ bot.on('physicsTick', async () => {
       rescueTick = 0; // Reset timer
     }
   } else {
-    // Jika bot sedang tidak mencoba maju, reset semuanya
+    // Kalau bot memang lagi diam, reset radarnya agar tidak salah sangka
     rescueTick = 0;
     if (bot.entity) lastRescuePos = bot.entity.position.clone();
   }
