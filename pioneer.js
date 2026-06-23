@@ -13,17 +13,19 @@ bot.loadPlugin(loader)
 // === SISTEM STATUS KERJA ===
 let isWorking = false
 let debugNav = false
+let followInterval = null // <-- INI YANG BIKIN ERROR TADI, SEKARANG SUDAH DIDAFTARKAN!
+let isFollowing = false   // <-- Untuk mengontrol radar agar tidak jalan dobel
 
 bot.on('spawn', () => {
   console.log('PioneerBot mendarat dengan aman!')
   if (bot.ashfinder) {
-    bot.ashfinder.config.breakBlocks = true // Allow breaking blocks
-    bot.ashfinder.config.placeBlocks = true // Allow placing blocks
-    bot.ashfinder.config.parkour = true     // Allow parkour jumps
+    bot.ashfinder.config.breakBlocks = true // Izinkan menghancurkan blok
+    bot.ashfinder.config.placeBlocks = true // Izinkan menaruh blok
+    bot.ashfinder.config.parkour = true     // Izinkan parkour
     
     // === JURUS DEBUGGING DARI GITHUB BARITONE ===
-    bot.ashfinder.debug = true; // Enable debug mode[cite: 5]
-    bot.ashfinder.config.thinkTimeout = 60000; // Increase thinking timeout to 60 seconds[cite: 5]
+    bot.ashfinder.debug = true; 
+    bot.ashfinder.config.thinkTimeout = 60000; 
     // ============================================
 
     console.log('✅ Sistem Ashfinder (Baritone) berhasil dimuat dengan DEBUG MODE AKTIF!')
@@ -40,6 +42,8 @@ bot.on('death', () => {
   console.log('Bot mati. Mereset sistem...')
   if (bot.ashfinder) bot.ashfinder.stop()
   isWorking = false
+  isFollowing = false
+  if (followInterval) { clearInterval(followInterval); followInterval = null }
   bot.chat('Waduh, aku mati! Mereset ulang posisiku...')
 })
 
@@ -88,7 +92,7 @@ async function simpanKePeti() {
 
   try {
     bot.chat('Peti ditemukan! Meluncur ke sana...')
-    if (bot.ashfinder) bot.ashfinder.stop() // REM SEBELUM JALAN
+    if (bot.ashfinder) bot.ashfinder.stop() 
     await bot.ashfinder.goto(
       new goals.GoalNear(new Vec3(petiBlok.position.x, petiBlok.position.y, petiBlok.position.z), 1.5)
     )
@@ -160,7 +164,7 @@ bot.on('chat', async (username, message) => {
     if (logs.length > 0) {
       bot.chat(`Meluncur Bos! Kebetulan aku bawa hasil tebangan.`)
       try {
-        if (bot.ashfinder) bot.ashfinder.stop() // REM SEBELUM JALAN
+        if (bot.ashfinder) bot.ashfinder.stop() 
         const destPos = targetPlayer.entity.position
         await bot.ashfinder.goto(new goals.GoalNear(new Vec3(destPos.x, destPos.y, destPos.z), 2))
 
@@ -184,19 +188,19 @@ bot.on('chat', async (username, message) => {
         bot.chat('Aduh aku nyangkut di jalan.')
       }
     } else {
-      // === SISTEM RADAR FOLLOW ANTI-CRASH ===
+      // === SISTEM RADAR FOLLOW SUPER AMAN ===
       bot.chat(`Membuntuti ${username} dengan radar Baritone!`)
       
-      // Bersihkan radar lama & rem mesin jika sedang jalan
       if (followInterval) { clearInterval(followInterval); followInterval = null }
-      if (bot.ashfinder) bot.ashfinder.stop(); // Stop current pathfinding[cite: 5]
+      if (bot.ashfinder) bot.ashfinder.stop()
+      isFollowing = false
 
       let lastTargetPos = null;
 
       const ikutiPemain = async () => {
         const player = bot.players[username]
         
-        // Kalau bos hilang/keluar server, matikan radar
+        // Kalau bos keluar server, matikan radar
         if (!player || !player.entity) {
           clearInterval(followInterval); followInterval = null
           return
@@ -205,32 +209,36 @@ bot.on('chat', async (username, message) => {
         const p = player.entity.position
         const jarakKeBos = bot.entity.position.distanceTo(p)
         
-        // 1. Jika Bos bergerak lebih dari 4 blok dari rute target sebelumnya, paksa bot potong kompas
-        if (lastTargetPos && p.distanceTo(lastTargetPos) > 4 && bot.ashfinder.isPathing) {
-           bot.ashfinder.stop(); // Stop current pathfinding[cite: 5]
+        // 1. Bos lari jauh? Rem mendadak agar rute dihitung ulang
+        if (lastTargetPos && p.distanceTo(lastTargetPos) > 4) {
+           bot.ashfinder.stop();
+           isFollowing = false;
         }
 
-        // 2. Jika bot sedang tidak jalan DAN Bos jaraknya > 3 blok, buat rute baru ke arah Bos
-        if (!bot.ashfinder.isPathing && jarakKeBos > 3) {
+        // 2. Jika bot sedang nganggur dan bos jauh, kejar!
+        if (!isFollowing && jarakKeBos > 3) {
           lastTargetPos = p.clone(); 
-          // Menggunakan GoalNear karena GoalFollow tidak tersedia di library ini[cite: 5]
-          bot.ashfinder.goto(new goals.GoalNear(new Vec3(p.x, p.y, p.z), 2)).catch(() => {});
+          isFollowing = true;
+          bot.ashfinder.goto(new goals.GoalNear(new Vec3(p.x, p.y, p.z), 2))
+            .then(() => { isFollowing = false; })
+            .catch(() => { isFollowing = false; });
         }
       }
 
-      // Eksekusi pertama kali, lalu ulangi setiap 2 detik
       ikutiPemain()
-      followInterval = setInterval(ikutiPemain, 2000) 
+      followInterval = setInterval(ikutiPemain, 1500) 
     }
   }
 
   // === FITUR BERHENTI DARURAT ===
   else if (message === 'berhenti' || message === 'stop') {
     isWorking = false
+    if (followInterval) { clearInterval(followInterval); followInterval = null }
     if (bot.ashfinder) bot.ashfinder.stop()
+    isFollowing = false
     bot.clearControlStates()
     try { bot.stopDigging() } catch (e) {}
-    bot.chat('Rem darurat ditarik! Semua aktivitas dan pergerakan dibatalkan secara paksa.')
+    bot.chat('Rem darurat ditarik! Semua aktivitas dibatalkan.')
   }
 
   // === FITUR DEBUGGING ===
@@ -268,7 +276,6 @@ bot.on('chat', async (username, message) => {
         }
         bot.chat('Sudah aku lempar semua. Ambil kayunya Bos!')
       } catch (e) {
-        console.log('⚠️ [DEBUG] Error saat lempar kayu:', e)
         bot.chat('Gagal lempar: ' + e.message)
       }
     } else {
@@ -285,6 +292,8 @@ bot.on('chat', async (username, message) => {
       return
     }
 
+    if (followInterval) { clearInterval(followInterval); followInterval = null; isFollowing = false; }
+    
     isWorking = true
     let targetKayu = 10
     const kata = message.split(' ')
@@ -343,20 +352,18 @@ bot.on('chat', async (username, message) => {
         try {
           const { x, y, z } = targetBlock.position
 
-          if (bot.ashfinder) bot.ashfinder.stop() // REM SEBELUM JALAN KE POHON
+          if (bot.ashfinder) bot.ashfinder.stop() 
           await bot.ashfinder.goto(new goals.GoalNear(new Vec3(x, y, z), 2))
           if (!isWorking) break
 
           const jarakKeTarget = bot.entity.position.distanceTo(new Vec3(x, y, z))
           if (jarakKeTarget > 5) {
-            console.log(`[INFO] Bot masih terlalu jauh (${jarakKeTarget.toFixed(1)} blok) dari kayu, skip.`)
             ignoredBlocks.add(`${x},${y},${z}`)
             continue
           }
 
           const blokSegar = bot.blockAt(new Vec3(x, y, z))
           if (!blokSegar || !logBlockIds.includes(blokSegar.type)) {
-            console.log('[INFO] Blok sudah tidak ada/bukan kayu lagi setelah navigasi, skip.')
             ignoredBlocks.add(`${x},${y},${z}`)
             continue
           }
