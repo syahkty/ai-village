@@ -22,15 +22,14 @@ bot.on('spawn', () => {
     bot.ashfinder.config.placeBlocks = true 
     bot.ashfinder.config.parkour = true     
     
-    // MATIKAN SEMUA DEBUG BARITONE SECARA PAKSA
     bot.ashfinder.debug = false; 
     bot.ashfinder.config.thinkTimeout = 60000; 
 
-    console.log('✅ Sistem Ashfinder (Baritone) dimuat dengan mode SILENT (Tanpa Partikel).')
+    console.log('✅ Sistem Ashfinder (Baritone) dimuat dengan mode SILENT.')
   } else {
     console.log('❌ PERINGATAN: Sistem Ashfinder tidak terdeteksi di dalam bot!')
   }
-  bot.chat('Siap bekerja! Mode senyap tanpa jalur path sudah aktif, Bos!')
+  bot.chat('Siap bekerja! Mode anti-nyangkut & auto-resume sudah aktif, Bos!')
 })
 
 bot.on('death', () => {
@@ -42,6 +41,67 @@ bot.on('death', () => {
   bot.chat('Waduh, aku mati! Mereset ulang posisiku...')
 })
 
+// === SISTEM RESCUE V5: DETEKSI CERDAS + AUTO-RESUME ===
+let lastRescuePos = null;
+let rescueStuckCount = 0;
+let isRescuing = false;
+
+setInterval(async () => {
+  if ((!isWorking && !isFollowing) || isRescuing || !bot.ashfinder) return;
+
+  const currentPos = bot.entity.position.clone();
+
+  if (lastRescuePos) {
+    const dist = currentPos.distanceTo(lastRescuePos);
+    
+    // Hanya curiga stuck JIKA Baritone sedang aktif menyuruh bot jalan
+    if (bot.ashfinder.isPathing) {
+      if (dist < 0.3) {
+        rescueStuckCount++;
+        console.log(`⚠️ [WARNING] Bot tertahan fisik! (Level: ${rescueStuckCount}/3)`);
+      } else {
+        rescueStuckCount = 0; 
+      }
+    } else {
+      rescueStuckCount = 0; // Kalau Baritone diam, reset radar
+    }
+
+    // Jika tertahan selama 3 detik berturut-turut, ambil alih!
+    if (rescueStuckCount >= 3) {
+      console.log('🚨 [RESCUE AKTIF] Bot terdeteksi nyangkut di sudut blok!');
+      isRescuing = true;
+      rescueStuckCount = 0;
+
+      try {
+        bot.ashfinder.stop();
+        bot.clearControlStates();
+        await new Promise(r => setTimeout(r, 200)); 
+
+        console.log('   -> Menarik bot mundur...');
+        bot.setControlState('back', true);
+        await new Promise(r => setTimeout(r, 400));
+        bot.setControlState('back', false);
+
+        console.log('   -> Lompat & Geser untuk mencari sela blok...');
+        const arahGeser = Math.random() > 0.5 ? 'left' : 'right';
+        bot.setControlState(arahGeser, true);
+        bot.setControlState('jump', true);
+        bot.setControlState('forward', true);
+        await new Promise(r => setTimeout(r, 600));
+
+        bot.clearControlStates();
+        console.log('✅ [RESCUE SELESAI] Mengembalikan kendali. Menunggu Auto-Resume...');
+        await new Promise(r => setTimeout(r, 1000)); 
+      } catch (err) {
+        bot.clearControlStates();
+      } finally {
+        isRescuing = false;
+      }
+    }
+  }
+  lastRescuePos = currentPos.clone();
+}, 1000);
+
 // === HELPER: EQUIP KAPAK TERBAIK ===
 async function equipAxe() {
   const axePriority = [
@@ -52,7 +112,6 @@ async function equipAxe() {
     const axe = bot.inventory.items().find(item => item.name === axeName)
     if (axe) {
       await bot.equip(axe, 'hand')
-      console.log(`[INFO] Memakai kapak: ${axeName}`)
       return
     }
   }
@@ -65,7 +124,7 @@ async function simpanKePeti() {
   const petiPositions = bot.findBlocks({ matching: chestId, maxDistance: 32, count: 1 })
 
   if (petiPositions.length === 0) {
-    bot.chat('Aduh, tidak ada peti di sekitarku (radius 32 blok). Kayunya kusimpan di tas ya.')
+    bot.chat('Aduh, tidak ada peti di sekitarku. Kayunya kusimpan di tas ya.')
     return false
   }
 
@@ -73,17 +132,33 @@ async function simpanKePeti() {
 
   try {
     bot.chat('Peti ditemukan! Meluncur ke sana...')
-    if (bot.ashfinder) bot.ashfinder.stop() 
-    await bot.ashfinder.goto(
-      new goals.GoalNear(new Vec3(petiBlok.position.x, petiBlok.position.y, petiBlok.position.z), 1.5)
-    )
-    if (!isWorking) {
-      bot.chat('Batal simpan ke peti karena dihentikan.')
-      return false
+    let sampaiPeti = false;
+
+    // LOOP PENJAGA: Jangan berhenti sampai benar-benar ada di depan peti
+    while (isWorking && !sampaiPeti) {
+      if (bot.ashfinder) bot.ashfinder.stop();
+      try {
+        await bot.ashfinder.goto(new goals.GoalNear(new Vec3(petiBlok.position.x, petiBlok.position.y, petiBlok.position.z), 1.5))
+      } catch(e) {}
+
+      if (!isWorking) return false;
+
+      // JIKA DI-RESCUE DI TENGAH JALAN, LANJUTKAN KE PETI!
+      if (isRescuing) {
+        console.log('🔄 [AUTO-RESUME] Melanjutkan perjalanan ke peti setelah rescue...');
+        while(isRescuing) await new Promise(r => setTimeout(r, 500));
+        continue; 
+      }
+
+      if (bot.entity.position.distanceTo(petiBlok.position) <= 3) {
+        sampaiPeti = true;
+      }
     }
+
+    if (!isWorking) return false;
     await bot.lookAt(petiBlok.position.offset(0.5, 0.5, 0.5))
+
   } catch (err) {
-    console.log('⚠️ [DEBUG] Error saat jalan ke peti:', err)
     bot.chat('Aduh, jalanku menuju peti gagal...')
     return false
   }
@@ -120,9 +195,7 @@ async function simpanKePeti() {
     bot.chat('Gagal memindahkan barang ke peti: ' + err.message)
     return false
   } finally {
-    if (peti) {
-      try { peti.close() } catch (e) {}
-    }
+    if (peti) { try { peti.close() } catch (e) {} }
   }
 }
 
@@ -132,11 +205,7 @@ bot.on('chat', async (username, message) => {
   // === FITUR NAVIGASI ===
   if (message === 'sini') {
     const targetPlayer = bot.players[username]
-    if (!targetPlayer || !targetPlayer.entity) {
-      const pos = bot.entity.position
-      bot.chat(`Aku tidak melihatmu dari sini. Aku di X:${Math.round(pos.x)}, Y:${Math.round(pos.y)}, Z:${Math.round(pos.z)}.`)
-      return
-    }
+    if (!targetPlayer || !targetPlayer.entity) return
 
     const logs = bot.inventory.items().filter(item => item.name.includes('log'))
 
@@ -145,23 +214,28 @@ bot.on('chat', async (username, message) => {
       try {
         if (bot.ashfinder) bot.ashfinder.stop() 
         const destPos = targetPlayer.entity.position
-        await bot.ashfinder.goto(new goals.GoalNear(new Vec3(destPos.x, destPos.y, destPos.z), 2))
+        
+        let sampaiBos = false;
+        while (isWorking && !sampaiBos) {
+          try { await bot.ashfinder.goto(new goals.GoalNear(new Vec3(destPos.x, destPos.y, destPos.z), 2)) } catch(e) {}
+          
+          if (isRescuing) {
+            while(isRescuing) await new Promise(r => setTimeout(r, 500));
+            continue;
+          }
+          if (bot.entity.position.distanceTo(targetPlayer.entity.position) <= 4) sampaiBos = true;
+          else break;
+        }
 
         if (!targetPlayer.entity) return
-
         await bot.lookAt(targetPlayer.entity.position.offset(0, 1.5, 0))
-        const jarakKeBos = bot.entity.position.distanceTo(targetPlayer.entity.position)
 
-        if (jarakKeBos <= 4) {
-          const logsSekarang = bot.inventory.items().filter(item => item.name.includes('log'))
-          for (const log of logsSekarang) {
-            await bot.tossStack(log)
-            await new Promise(resolve => setTimeout(resolve, 500))
-          }
-          bot.chat('Ini kayunya Bos! Jangan lupa ketik "menerima kayu" ya.')
-        } else {
-          bot.chat(`Bos, aku terhalang di tengah jalan!`)
+        const logsSekarang = bot.inventory.items().filter(item => item.name.includes('log'))
+        for (const log of logsSekarang) {
+          await bot.tossStack(log)
+          await new Promise(resolve => setTimeout(resolve, 500))
         }
+        bot.chat('Ini kayunya Bos! Jangan lupa ketik "menerima kayu" ya.')
       } catch (e) {
         bot.chat('Aduh aku nyangkut di jalan.')
       }
@@ -176,7 +250,6 @@ bot.on('chat', async (username, message) => {
 
       const ikutiPemain = async () => {
         const player = bot.players[username]
-        
         if (!player || !player.entity) {
           clearInterval(followInterval); followInterval = null
           return
@@ -190,7 +263,7 @@ bot.on('chat', async (username, message) => {
            isFollowing = false;
         }
 
-        if (!isFollowing && jarakKeBos > 3) {
+        if (!isFollowing && jarakKeBos > 3 && !isRescuing) {
           lastTargetPos = p.clone(); 
           isFollowing = true;
           bot.ashfinder.goto(new goals.GoalNear(new Vec3(p.x, p.y, p.z), 2))
@@ -304,16 +377,34 @@ bot.on('chat', async (username, message) => {
 
         try {
           const { x, y, z } = targetBlock.position
+          let sampaiPohon = false;
 
-          if (bot.ashfinder) bot.ashfinder.stop() 
-          await bot.ashfinder.goto(new goals.GoalNear(new Vec3(x, y, z), 2))
-          if (!isWorking) break
+          // LOOP PENJAGA: Pastikan rute tidak putus di tengah jalan karena rescue
+          while (isWorking && !sampaiPohon) {
+            if (bot.ashfinder) bot.ashfinder.stop() 
+            try {
+              await bot.ashfinder.goto(new goals.GoalNear(new Vec3(x, y, z), 2))
+            } catch(e) {}
+            
+            if (!isWorking) break;
 
-          const jarakKeTarget = bot.entity.position.distanceTo(new Vec3(x, y, z))
-          if (jarakKeTarget > 5) {
-            ignoredBlocks.add(`${x},${y},${z}`)
-            continue
+            // JIKA DI-RESCUE DI TENGAH JALAN, LANJUTKAN KE POHON YANG SAMA!
+            if (isRescuing) {
+              console.log('🔄 [AUTO-RESUME] Mengulang rute ke pohon target setelah diselamatkan...');
+              while(isRescuing) await new Promise(r => setTimeout(r, 500));
+              continue; 
+            }
+
+            const jarakKeTarget = bot.entity.position.distanceTo(new Vec3(x, y, z))
+            if (jarakKeTarget > 5) {
+              ignoredBlocks.add(`${x},${y},${z}`)
+              break; 
+            } else {
+              sampaiPohon = true;
+            }
           }
+
+          if (!isWorking || !sampaiPohon) continue;
 
           const blokSegar = bot.blockAt(new Vec3(x, y, z))
           if (!blokSegar || !logBlockIds.includes(blokSegar.type)) {
@@ -321,21 +412,13 @@ bot.on('chat', async (username, message) => {
             continue
           }
 
-          if (!isWorking) break
-
           await bot.lookAt(new Vec3(x + 0.5, y + 0.5, z + 0.5))
           await bot.dig(blokSegar)
           await new Promise(resolve => setTimeout(resolve, 800))
 
         } catch (err) {
-          if (!isWorking) break
-          if (err?.message === 'GoalChanged' || err?.name === 'GoalChanged') {
-            await new Promise(resolve => setTimeout(resolve, 1000))
-            continue
-          } else {
-            ignoredBlocks.add(`${targetBlock.position.x},${targetBlock.position.y},${targetBlock.position.z}`)
-            await new Promise(resolve => setTimeout(resolve, 500))
-          }
+          ignoredBlocks.add(`${targetBlock.position.x},${targetBlock.position.y},${targetBlock.position.z}`)
+          await new Promise(resolve => setTimeout(resolve, 500))
         }
       }
 
@@ -353,100 +436,21 @@ bot.on('chat', async (username, message) => {
       isWorking = false
 
     } catch (error) {
-      bot.chat('Duh, ada error sistem.')
       isWorking = false
     }
   }
 })
 
 bot.on('error', (err) => {
-  // Hanya log error penting yang bukan soal partikel
   if (!err.message.includes('world_particles')) {
      console.log('🚨 [ERROR MINEFLAYER]:', err.message)
   }
 })
 
-// === PENGAMAN SUPER: MEMBLOKIR ERROR PARTIKEL DI PM2 ===
 process.on('uncaughtException', (err) => {
-  // Jika error berasal dari gagal baca packet partikel, abaikan dan jangan penuhi log PM2!
-  if (err.name === 'PartialReadError' || (err.message && err.message.includes('world_particles'))) {
-    return; 
-  }
+  if (err.name === 'PartialReadError' || (err.message && err.message.includes('world_particles'))) return; 
   console.error('🚨 [CRITICAL ERROR]:', err);
 });
-
 process.on('unhandledRejection', (reason) => {
-  if (reason && (reason.name === 'PartialReadError' || (reason.message && reason.message.includes('world_particles')))) {
-    return;
-  }
-});
-
-// === SISTEM RESCUE: PEMECAH KEBODOHAN BOT (ANTI-STUCK V4 + DEBUG) ===
-let rescueTick = 0;
-let lastRescuePos = null;
-let isRescuing = false;
-
-bot.on('physicsTick', async () => {
-  // Jika sedang diselamatkan, jangan ditimpa
-  if (isRescuing) return;
-
-  // Cek apakah bot sedang mencoba maju, kiri, atau kanan (Baritone sedang aktif)
-  const isTryingToMove = bot.getControlState('forward') || bot.getControlState('left') || bot.getControlState('right');
-  
-  if (isTryingToMove) {
-    rescueTick++;
-
-    // Lakukan pengecekan setiap 1 detik (20 ticks)
-    if (rescueTick >= 20) {
-      const currentPos = bot.entity.position.clone();
-
-      if (lastRescuePos) {
-        // Hitung jarak HORIZONTAL (X dan Z saja). 
-        // Abaikan Y agar bot tidak menipu sistem dengan cara lompat di tempat.
-        const dx = currentPos.x - lastRescuePos.x;
-        const dz = currentPos.z - lastRescuePos.z;
-        const dist2D = Math.sqrt(dx * dx + dz * dz);
-
-        // Tampilkan jarak tempuh bot per 1 detik di terminal PM2
-        console.log(`[DEBUG RESCUE] Bot mencoba jalan... Jarak gerak 1 dtk terakhir: ${dist2D.toFixed(2)} blok`);
-
-        // Jika disuruh jalan tapi dalam 1 detik bergeraknya kurang dari 0.3 blok = STUCK DI SUDUT!
-        if (dist2D < 0.3) {
-          console.log('⚠️ [RESCUE AKTIF] Bot terdeteksi nyangkut di sudut blok!');
-          isRescuing = true;
-
-          // 1. Matikan Baritone paksa agar tidak rebutan keyboard
-          if (bot.ashfinder) bot.ashfinder.stop();
-          bot.clearControlStates();
-
-          // 2. Mundur sedikit menjauh dari sudut
-          console.log('   -> Menarik bot mundur...');
-          bot.setControlState('back', true);
-          await new Promise(r => setTimeout(r, 450));
-          bot.setControlState('back', false);
-
-          // 3. Geser menyamping sambil lompat maju
-          console.log('   -> Lompat & Geser untuk mencari sela blok...');
-          const arahGeser = Math.random() > 0.5 ? 'left' : 'right';
-          bot.setControlState(arahGeser, true);
-          bot.setControlState('jump', true);
-          bot.setControlState('forward', true);
-          
-          await new Promise(r => setTimeout(r, 600)); 
-
-          // 4. Selesai manuver, Baritone akan otomatis memanggil goto() baru dari loop atas
-          console.log('   -> Manuver selesai! Mengembalikan kendali ke AI Baritone.');
-          bot.clearControlStates();
-          isRescuing = false;
-        }
-      }
-
-      lastRescuePos = currentPos;
-      rescueTick = 0; // Reset timer
-    }
-  } else {
-    // Kalau bot memang lagi diam, reset radarnya agar tidak salah sangka
-    rescueTick = 0;
-    if (bot.entity) lastRescuePos = bot.entity.position.clone();
-  }
+  if (reason && (reason.name === 'PartialReadError' || (reason.message && reason.message.includes('world_particles')))) return;
 });
