@@ -12,30 +12,25 @@ bot.loadPlugin(loader)
 
 // === SISTEM STATUS KERJA ===
 let isWorking = false
-let debugNav = false
-let followInterval = null // <-- INI YANG BIKIN ERROR TADI, SEKARANG SUDAH DIDAFTARKAN!
-let isFollowing = false   // <-- Untuk mengontrol radar agar tidak jalan dobel
+let followInterval = null 
+let isFollowing = false   
 
 bot.on('spawn', () => {
   console.log('PioneerBot mendarat dengan aman!')
   if (bot.ashfinder) {
-    bot.ashfinder.config.breakBlocks = true // Izinkan menghancurkan blok
-    bot.ashfinder.config.placeBlocks = true // Izinkan menaruh blok
-    bot.ashfinder.config.parkour = true     // Izinkan parkour
+    bot.ashfinder.config.breakBlocks = true 
+    bot.ashfinder.config.placeBlocks = true 
+    bot.ashfinder.config.parkour = true     
     
-    // === JURUS DEBUGGING DARI GITHUB BARITONE ===
-    bot.ashfinder.debug = true; 
+    // MATIKAN SEMUA DEBUG BARITONE SECARA PAKSA
+    bot.ashfinder.debug = false; 
     bot.ashfinder.config.thinkTimeout = 60000; 
-    // ============================================
 
-    console.log('✅ Sistem Ashfinder (Baritone) berhasil dimuat dengan DEBUG MODE AKTIF!')
-    bot.ashfinder.on('pathStarted', (data) => {
-      if (debugNav) drawPath(data.path)
-    })
+    console.log('✅ Sistem Ashfinder (Baritone) dimuat dengan mode SILENT (Tanpa Partikel).')
   } else {
     console.log('❌ PERINGATAN: Sistem Ashfinder tidak terdeteksi di dalam bot!')
   }
-  bot.chat('Siap bekerja! Otak Baritone & Mode Debug sudah menyala, Bos!')
+  bot.chat('Siap bekerja! Mode senyap tanpa jalur path sudah aktif, Bos!')
 })
 
 bot.on('death', () => {
@@ -59,20 +54,6 @@ async function equipAxe() {
       await bot.equip(axe, 'hand')
       console.log(`[INFO] Memakai kapak: ${axeName}`)
       return
-    }
-  }
-}
-
-// === HELPER: VISUALISASI RUTE (PARTIKEL) ===
-async function drawPath(path) {
-  if (!debugNav) return
-  console.log(`[DEBUG] Menggambar ${path.length} titik rute...`)
-  for (let i = 0; i < path.length; i += 5) {
-    if (!debugNav) break
-    const point = path[i].worldPos
-    if (point) {
-      bot.chat(`/particle flame ${point.x} ${point.y + 0.5} ${point.z} 0 0 0 0.05 5 force @a`)
-      await new Promise(resolve => setTimeout(resolve, 50))
     }
   }
 }
@@ -123,7 +104,6 @@ async function simpanKePeti() {
           await peti.deposit(item.type, null, item.count)
           await new Promise(resolve => setTimeout(resolve, 300))
         } catch (depositErr) {
-          console.log('⚠️ [DEBUG] Gagal deposit:', depositErr)
           bot.chat('Gagal memasukkan kayu (mungkin peti penuh): ' + depositErr.message)
           return false
         }
@@ -137,7 +117,6 @@ async function simpanKePeti() {
     }
     return true
   } catch (err) {
-    console.log('⚠️ [DEBUG] Error saat buka peti:', err)
     bot.chat('Gagal memindahkan barang ke peti: ' + err.message)
     return false
   } finally {
@@ -184,11 +163,9 @@ bot.on('chat', async (username, message) => {
           bot.chat(`Bos, aku terhalang di tengah jalan!`)
         }
       } catch (e) {
-        console.log('❌ [SINI] ERROR saat antar kayu ke bos:', e)
         bot.chat('Aduh aku nyangkut di jalan.')
       }
     } else {
-      // === SISTEM RADAR FOLLOW SUPER AMAN ===
       bot.chat(`Membuntuti ${username} dengan radar Baritone!`)
       
       if (followInterval) { clearInterval(followInterval); followInterval = null }
@@ -200,7 +177,6 @@ bot.on('chat', async (username, message) => {
       const ikutiPemain = async () => {
         const player = bot.players[username]
         
-        // Kalau bos keluar server, matikan radar
         if (!player || !player.entity) {
           clearInterval(followInterval); followInterval = null
           return
@@ -209,13 +185,11 @@ bot.on('chat', async (username, message) => {
         const p = player.entity.position
         const jarakKeBos = bot.entity.position.distanceTo(p)
         
-        // 1. Bos lari jauh? Rem mendadak agar rute dihitung ulang
         if (lastTargetPos && p.distanceTo(lastTargetPos) > 4) {
            bot.ashfinder.stop();
            isFollowing = false;
         }
 
-        // 2. Jika bot sedang nganggur dan bos jauh, kejar!
         if (!isFollowing && jarakKeBos > 3) {
           lastTargetPos = p.clone(); 
           isFollowing = true;
@@ -239,27 +213,6 @@ bot.on('chat', async (username, message) => {
     bot.clearControlStates()
     try { bot.stopDigging() } catch (e) {}
     bot.chat('Rem darurat ditarik! Semua aktivitas dibatalkan.')
-  }
-
-  // === FITUR DEBUGGING ===
-  else if (message === 'debug') {
-    bot.chat('Mencetak status debug ke Terminal...')
-    console.log('================ DEBUG INFO ================')
-    console.log('Status isWorking:', isWorking)
-    console.log('Ashfinder siap?:', bot.ashfinder ? 'Ya' : 'TIDAK (Undefined)')
-    console.log('Posisi Bot:', bot.entity.position)
-    console.log('Inventory:', bot.inventory.items().map(i => `${i.name}(x${i.count})`).join(', ') || 'Kosong')
-    console.log('============================================')
-  }
-
-  // === FITUR VISUALISASI RUTE ===
-  else if (message === 'debug nav on') {
-    debugNav = true
-    bot.chat('Visualisasi rute AKTIF! (Bot butuh OP untuk menggambar partikel)')
-  }
-  else if (message === 'debug nav off') {
-    debugNav = false
-    bot.chat('Visualisasi rute dimatikan.')
   }
 
   // === FITUR KONFIRMASI MENERIMA KAYU ===
@@ -380,8 +333,6 @@ bot.on('chat', async (username, message) => {
             await new Promise(resolve => setTimeout(resolve, 1000))
             continue
           } else {
-            console.log('⚠️ [DEBUG] Error saat mencari jalan ke pohon:', err)
-            bot.chat('Blok ini sulit dijangkau, cari yang lain...')
             ignoredBlocks.add(`${targetBlock.position.x},${targetBlock.position.y},${targetBlock.position.z}`)
             await new Promise(resolve => setTimeout(resolve, 500))
           }
@@ -402,13 +353,30 @@ bot.on('chat', async (username, message) => {
       isWorking = false
 
     } catch (error) {
-      bot.chat('Duh, ada error sistem (Cek Terminal VPS).')
-      console.log('🚨 [FATAL ERROR] Sistem tebang jebol:', error)
+      bot.chat('Duh, ada error sistem.')
       isWorking = false
     }
   }
 })
 
 bot.on('error', (err) => {
-  console.log('🚨 [ERROR CORE MINEFLAYER]:', err)
+  // Hanya log error penting yang bukan soal partikel
+  if (!err.message.includes('world_particles')) {
+     console.log('🚨 [ERROR MINEFLAYER]:', err.message)
+  }
 })
+
+// === PENGAMAN SUPER: MEMBLOKIR ERROR PARTIKEL DI PM2 ===
+process.on('uncaughtException', (err) => {
+  // Jika error berasal dari gagal baca packet partikel, abaikan dan jangan penuhi log PM2!
+  if (err.name === 'PartialReadError' || (err.message && err.message.includes('world_particles'))) {
+    return; 
+  }
+  console.error('🚨 [CRITICAL ERROR]:', err);
+});
+
+process.on('unhandledRejection', (reason) => {
+  if (reason && (reason.name === 'PartialReadError' || (reason.message && reason.message.includes('world_particles')))) {
+    return;
+  }
+});
