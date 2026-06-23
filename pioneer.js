@@ -14,6 +14,13 @@ bot.loadPlugin(loader)
 let isWorking = false
 let followInterval = null // Tracking loop ikuti pemain
 let debugNav = false // Status visualisasi rute (butuh OP)
+let sedangPenyelamatan = false // Status kalau bot lagi bermanuver lepas dari stuck
+let posisiTerakhir = null
+let waktuMacet = 0
+let percobaanPenyelamatan = 0
+let tickCountRescue = 0
+let isProcessingRescue = false
+let lastAutoJumpTime = 0
 
 bot.on('spawn', () => {
   console.log('PioneerBot mendarat dengan aman!')
@@ -21,6 +28,7 @@ bot.on('spawn', () => {
     // Aktifkan breakBlocks untuk menghancurkan penghalang dan placeBlocks untuk membangun jalan
     bot.ashfinder.config.breakBlocks = true
     bot.ashfinder.config.placeBlocks = true
+    bot.ashfinder.config.parkour = true // Aktifkan parkour bawaan sebagai backup
     console.log('✅ Sistem Ashfinder (Baritone) berhasil dimuat!')
     
     // Listener untuk visualisasi rute
@@ -443,4 +451,129 @@ bot.on('chat', async (username, message) => {
 bot.on('error', (err) => {
   console.log('🚨 [ERROR CORE MINEFLAYER]:', err)
 })
+
+// ====================================================================
+// === SISTEM AUTO-JUMP BEDROCK EDITION V1 (Proaktif) ===
+// ====================================================================
+// Layer 1: Auto-Jump Proaktif — deteksi obstacle setiap tick, lompat instan
+// Layer 2: Rescue Fallback — jika benar-benar stuck (lubang, terkurung, dll)
+// ====================================================================
+
+// --- Layer 1: Auto-Jump Proaktif (Bedrock-style) ---
+const AUTO_JUMP_COOLDOWN = 500; 
+
+function cekBlokPadat(pos) {
+  if (!pos) return false;
+  const blok = bot.blockAt(pos);
+  if (!blok) return false;
+  return blok.boundingBox === 'block';
+}
+
+bot.on('physicsTick', () => {
+  // Hanya aktif kalau bot sedang navigasi (ashfinder aktif) atau ada input forward
+  if (!bot.ashfinder?.isPathing && !bot.ashfinder?.currentGoal && !bot.getControlState('forward')) return;
+  if (sedangPenyelamatan) return;
+  if (!bot.entity.isCollidedHorizontally) return;
+  if (!bot.entity.onGround) return;
+  
+  const sekarang = Date.now();
+  if (sekarang - lastAutoJumpTime < AUTO_JUMP_COOLDOWN) return;
+
+  const pos = bot.entity.position;
+  const yaw = bot.entity.yaw;
+  const dx = -Math.sin(yaw);
+  const dz = -Math.cos(yaw);
+
+  const cekX = Math.floor(pos.x + dx * 0.8);
+  const cekZ = Math.floor(pos.z + dz * 0.8);
+  const kakinya = Math.floor(pos.y);
+
+  if (!cekBlokPadat(new Vec3(cekX, kakinya, cekZ))) return;
+  if (cekBlokPadat(new Vec3(cekX, kakinya + 1, cekZ))) return; // Tembok tinggi
+  if (cekBlokPadat(new Vec3(cekX, kakinya + 2, cekZ))) return; // Ruang kepala
+  if (cekBlokPadat(new Vec3(Math.floor(pos.x), kakinya + 2, Math.floor(pos.z)))) return; // Langit-langit
+
+  lastAutoJumpTime = sekarang;
+  bot.setControlState('jump', true);
+  setImmediate(() => bot.setControlState('jump', false));
+});
+
+// --- Layer 2: Rescue Fallback (untuk stuck yang lebih parah) ---
+bot.on('physicsTick', async () => {
+  if (isProcessingRescue) return;
+  
+  const isNavigating = bot.ashfinder?.isPathing || bot.ashfinder?.currentGoal;
+  
+  if (isNavigating && !sedangPenyelamatan) {
+    tickCountRescue++;
+    if (tickCountRescue >= 20) {
+      const posisiSekarang = bot.entity.position.clone();
+      if (posisiTerakhir) {
+        const dX = posisiSekarang.x - posisiTerakhir.x;
+        const dZ = posisiSekarang.z - posisiTerakhir.z;
+        if (Math.sqrt(dX * dX + dZ * dZ) < 0.3) waktuMacet++;
+        else waktuMacet = 0;
+      }
+      posisiTerakhir = posisiSekarang;
+      tickCountRescue = 0;
+    }
+
+    if (waktuMacet > 3) {
+      sedangPenyelamatan = true;
+      isProcessingRescue = true;
+      percobaanPenyelamatan++;
+      
+      const tujuanLama = bot.ashfinder.currentGoal;
+      bot.ashfinder.stop();
+      bot.clearControlStates();
+      
+      const daunNyangkut = bot.findBlock({
+        matching: (block) => block && block.name?.includes('leaves'),
+        maxDistance: 2
+      });
+      
+      if (daunNyangkut) {
+        try { await bot.dig(daunNyangkut); } catch(e) {}
+        if (tujuanLama) bot.ashfinder.goto(tujuanLama).catch(() => {});
+        waktuMacet = 0; sedangPenyelamatan = false; isProcessingRescue = false;
+        return;
+      }
+
+      if (percobaanPenyelamatan <= 2) {
+        bot.setControlState('back', true);
+        await new Promise(r => setTimeout(r, 400));
+        bot.setControlState('back', false);
+        await new Promise(r => setTimeout(r, 100));
+        bot.setControlState('jump', true);
+        bot.setControlState('forward', true);
+        await new Promise(r => setTimeout(r, 400));
+        bot.clearControlStates();
+      } else if (percobaanPenyelamatan <= 4) {
+        bot.chat('Cari rute lain...')
+        const arah = percobaanPenyelamatan % 2 === 0 ? 'left' : 'right';
+        bot.setControlState('back', true);
+        bot.setControlState(arah, true);
+        await new Promise(r => setTimeout(r, 500));
+        bot.clearControlStates();
+        bot.setControlState('jump', true);
+        bot.setControlState('forward', true);
+        await new Promise(r => setTimeout(r, 400));
+        bot.clearControlStates();
+      } else {
+        bot.chat('Macet parah, reroute total!')
+        bot.setControlState('back', true);
+        await new Promise(r => setTimeout(r, 800));
+        bot.clearControlStates();
+        percobaanPenyelamatan = 0;
+      }
+      
+      if (tujuanLama) bot.ashfinder.goto(tujuanLama).catch(() => {});
+      waktuMacet = 0; sedangPenyelamatan = false; isProcessingRescue = false;
+    }
+  } else {
+    posisiTerakhir = null;
+    waktuMacet = 0;
+    if (!isNavigating && !sedangPenyelamatan) percobaanPenyelamatan = 0;
+  }
+});
 
