@@ -17,16 +17,13 @@ let debugNav = false
 bot.on('spawn', () => {
   console.log('PioneerBot mendarat dengan aman!')
   if (bot.ashfinder) {
-    bot.ashfinder.config.breakBlocks = true
-    bot.ashfinder.config.placeBlocks = true
-    bot.ashfinder.config.parkour = true
+    bot.ashfinder.config.breakBlocks = true // Allow breaking blocks
+    bot.ashfinder.config.placeBlocks = true // Allow placing blocks
+    bot.ashfinder.config.parkour = true     // Allow parkour jumps
     
     // === JURUS DEBUGGING DARI GITHUB BARITONE ===
-    // 1. Enable debug mode to see what's happening
-    bot.ashfinder.debug = true; 
-
-    // 2. Increase thinking timeout (60 detik) agar tidak gampang menyerah di hutan
-    bot.ashfinder.thinkTimeout = 60000; 
+    bot.ashfinder.debug = true; // Enable debug mode[cite: 5]
+    bot.ashfinder.config.thinkTimeout = 60000; // Increase thinking timeout to 60 seconds[cite: 5]
     // ============================================
 
     console.log('✅ Sistem Ashfinder (Baritone) berhasil dimuat dengan DEBUG MODE AKTIF!')
@@ -187,12 +184,43 @@ bot.on('chat', async (username, message) => {
         bot.chat('Aduh aku nyangkut di jalan.')
       }
     } else {
-      // MENGGUNAKAN GOAL FOLLOW BAWAAN BARITONE (Tanpa SetInterval!)
-      bot.chat(`Membuntuti ${username} dengan cerdas!`)
-      if (bot.ashfinder) bot.ashfinder.stop() // REM SEBELUM JALAN
-      bot.ashfinder.goto(new goals.GoalFollow(targetPlayer.entity, 3)).catch(e => {
-        console.log('⚠️ [DEBUG] Batal follow:', e.message)
-      })
+      // === SISTEM RADAR FOLLOW ANTI-CRASH ===
+      bot.chat(`Membuntuti ${username} dengan radar Baritone!`)
+      
+      // Bersihkan radar lama & rem mesin jika sedang jalan
+      if (followInterval) { clearInterval(followInterval); followInterval = null }
+      if (bot.ashfinder) bot.ashfinder.stop(); // Stop current pathfinding[cite: 5]
+
+      let lastTargetPos = null;
+
+      const ikutiPemain = async () => {
+        const player = bot.players[username]
+        
+        // Kalau bos hilang/keluar server, matikan radar
+        if (!player || !player.entity) {
+          clearInterval(followInterval); followInterval = null
+          return
+        }
+        
+        const p = player.entity.position
+        const jarakKeBos = bot.entity.position.distanceTo(p)
+        
+        // 1. Jika Bos bergerak lebih dari 4 blok dari rute target sebelumnya, paksa bot potong kompas
+        if (lastTargetPos && p.distanceTo(lastTargetPos) > 4 && bot.ashfinder.isPathing) {
+           bot.ashfinder.stop(); // Stop current pathfinding[cite: 5]
+        }
+
+        // 2. Jika bot sedang tidak jalan DAN Bos jaraknya > 3 blok, buat rute baru ke arah Bos
+        if (!bot.ashfinder.isPathing && jarakKeBos > 3) {
+          lastTargetPos = p.clone(); 
+          // Menggunakan GoalNear karena GoalFollow tidak tersedia di library ini[cite: 5]
+          bot.ashfinder.goto(new goals.GoalNear(new Vec3(p.x, p.y, p.z), 2)).catch(() => {});
+        }
+      }
+
+      // Eksekusi pertama kali, lalu ulangi setiap 2 detik
+      ikutiPemain()
+      followInterval = setInterval(ikutiPemain, 2000) 
     }
   }
 
