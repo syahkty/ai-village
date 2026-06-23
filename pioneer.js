@@ -18,9 +18,9 @@ let debugNav = false // Status visualisasi rute (butuh OP)
 bot.on('spawn', () => {
   console.log('PioneerBot mendarat dengan aman!')
   if (bot.ashfinder) {
-    // JANGAN aktifkan breakBlocks — akan menghancurkan tanah/batu untuk buat jalur
-    bot.ashfinder.config.breakBlocks = false
-    bot.ashfinder.config.placeBlocks = false
+    // Aktifkan breakBlocks untuk menghancurkan penghalang dan placeBlocks untuk membangun jalan
+    bot.ashfinder.config.breakBlocks = true
+    bot.ashfinder.config.placeBlocks = true
     console.log('✅ Sistem Ashfinder (Baritone) berhasil dimuat!')
     
     // Listener untuk visualisasi rute
