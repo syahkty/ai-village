@@ -13,6 +13,7 @@ bot.loadPlugin(loader)
 // === SISTEM STATUS KERJA ===
 let isWorking = false
 let followInterval = null // Tracking loop ikuti pemain
+let debugNav = false // Status visualisasi rute (butuh OP)
 
 bot.on('spawn', () => {
   console.log('PioneerBot mendarat dengan aman!')
@@ -21,6 +22,11 @@ bot.on('spawn', () => {
     bot.ashfinder.config.breakBlocks = false
     bot.ashfinder.config.placeBlocks = false
     console.log('✅ Sistem Ashfinder (Baritone) berhasil dimuat!')
+    
+    // Listener untuk visualisasi rute
+    bot.ashfinder.on('pathStarted', (data) => {
+      if (debugNav) drawPath(data.path)
+    })
   } else {
     console.log('❌ PERINGATAN: Sistem Ashfinder tidak terdeteksi di dalam bot!')
   }
@@ -50,6 +56,23 @@ async function equipAxe() {
     }
   }
   // Tidak ada kapak — pakai tangan kosong saja
+}
+
+// === HELPER: VISUALISASI RUTE (PARTIKEL) ===
+async function drawPath(path) {
+  if (!debugNav) return
+  console.log(`[DEBUG] Menggambar ${path.length} titik rute...`)
+  
+  // Ambil setiap titik ke-5 agar tidak spam command
+  for (let i = 0; i < path.length; i += 5) {
+    if (!debugNav) break
+    const point = path[i].worldPos
+    if (point) {
+      // Gunakan command /particle. Membutuhkan OP.
+      bot.chat(`/particle flame ${point.x} ${point.y + 0.5} ${point.z} 0 0 0 0.05 5 force @a`)
+      await new Promise(resolve => setTimeout(resolve, 50)); // Jeda 50ms antar command
+    }
+  }
 }
 
 // === FUNGSI LOGISTIK DESA ===
@@ -224,10 +247,23 @@ bot.on('chat', async (username, message) => {
     bot.chat('Mencetak status debug ke Terminal...')
     console.log('================ DEBUG INFO ================')
     console.log('Status isWorking:', isWorking)
+    console.log('Visualisasi Navigasi (debugNav):', debugNav)
     console.log('Ashfinder siap?:', bot.ashfinder ? 'Ya' : 'TIDAK (Undefined)')
     console.log('Posisi Bot:', bot.entity.position)
     console.log('Inventory:', bot.inventory.items().map(i => `${i.name}(x${i.count})`).join(', ') || 'Kosong')
     console.log('============================================')
+  }
+
+  // === FITUR VISUALISASI RUTE ===
+  else if (message === 'debug nav on') {
+    debugNav = true
+    if (bot.ashfinder) bot.ashfinder.debug = true
+    bot.chat('Visualisasi rute AKTIF! (Bot butuh OP untuk menggambar partikel)')
+  }
+  else if (message === 'debug nav off') {
+    debugNav = false
+    if (bot.ashfinder) bot.ashfinder.debug = false
+    bot.chat('Visualisasi rute dimatikan.')
   }
 
   // === FITUR TES LOMPAT ===
