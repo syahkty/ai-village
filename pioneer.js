@@ -381,48 +381,65 @@ process.on('unhandledRejection', (reason) => {
   }
 });
 
-// === SISTEM PELUMAS HITBOX (MICRO-STRAFE ANTI-SANGKUT) ===
-let monitorSangkut = 0;
-let posisiTerakhir = null;
+// === SISTEM RESCUE: PEMECAH KEBODOHAN BOT (ANTI-STUCK V3) ===
+let rescueTick = 0;
+let lastRescuePos = null;
+let isRescuing = false;
 
-bot.on('physicsTick', () => {
-  // Hanya pantau jika bot sedang bekerja dan navigasi Baritone sedang aktif jalan
-  if (!isWorking || !bot.ashfinder || !bot.ashfinder.isPathing) {
-    monitorSangkut = 0;
+bot.on('physicsTick', async () => {
+  // Jangan diganggu kalau bot sedang istirahat atau sedang diselamatkan
+  if (!isWorking || isRescuing) {
+    rescueTick = 0;
     return;
   }
 
-  const posisiSekarang = bot.entity.position;
-  
-  if (posisiTerakhir) {
-    // Hitung jarak pergeseran bot dalam 1 tick (1/20 detik)
-    const jarak = posisiSekarang.distanceTo(posisiTerakhir);
-    
-    // Jika bot menekan tombol 'Maju' (W) tapi jarak geraknya < 0.05 blok (Nyangkut Fisik)
-    if (jarak < 0.05 && bot.getControlState('forward')) {
-      monitorSangkut++;
-    } else if (jarak > 0.05) {
-      monitorSangkut = 0; // Pergerakan lancar
-    }
+  // Apakah bot sedang mencoba jalan maju (disuruh Baritone)?
+  if (bot.getControlState('forward')) {
+    rescueTick++;
 
-    // Jika nyangkut lebih dari 1 detik (20 ticks) di sudut blok
-    if (monitorSangkut > 20) {
-      console.log('⚠️ [ANTI-SANGKUT] Bahu bot nyangkut di sudut hitbox! Melakukan Micro-Strafe...');
-      
-      // Geser tipis ke kiri atau kanan untuk meloloskan bahu dari sudut
-      const arahGeser = Math.random() > 0.5 ? 'left' : 'right';
-      bot.setControlState(arahGeser, true);
-      bot.setControlState('jump', true); // Lompatan kecil membantu lepas dari pijakan tak rata
-      
-      // Lepas tombol setelah 250 milidetik agar tidak merusak rute asli Baritone
-      setTimeout(() => {
-        bot.setControlState(arahGeser, false);
-        bot.setControlState('jump', false);
-      }, 250);
+    // Cek posisi setiap 1 detik (20 ticks)
+    if (rescueTick >= 20) {
+      const currentPos = bot.entity.position.clone();
 
-      monitorSangkut = 0; // Reset sensor
+      if (lastRescuePos) {
+        const dist = currentPos.distanceTo(lastRescuePos);
+
+        // Jika bot disuruh maju tapi jarak tempuhnya < 0.5 blok dalam 1 detik = STUCK PARAH!
+        if (dist < 0.5) {
+          console.log('⚠️ [RESCUE] Bot bertingkah bodoh/nyangkut! Mengambil alih kendali paksa...');
+          isRescuing = true;
+
+          // 1. TAMPAR MESIN BARITONE (Matikan paksa agar tidak rebutan keyboard)
+          if (bot.ashfinder) bot.ashfinder.stop();
+          bot.clearControlStates();
+
+          // 2. MANUVER PELEPASAN MANUAL
+          // Mundur sedikit untuk melepaskan bahu dari sudut
+          bot.setControlState('back', true);
+          await new Promise(r => setTimeout(r, 400));
+          bot.setControlState('back', false);
+
+          // Geser ke samping secara acak sambil melompat maju
+          const arahGeser = Math.random() > 0.5 ? 'left' : 'right';
+          bot.setControlState(arahGeser, true);
+          bot.setControlState('jump', true);
+          bot.setControlState('forward', true);
+          
+          await new Promise(r => setTimeout(r, 600)); // Tahan selama 0.6 detik
+
+          // 3. KEMBALIKAN KENDALI
+          // Lepas semua tombol, lalu biarkan loop utama memanggil ulang rute Baritone
+          bot.clearControlStates();
+          isRescuing = false;
+        }
+      }
+
+      lastRescuePos = currentPos;
+      rescueTick = 0; // Reset timer
     }
+  } else {
+    // Jika bot sedang tidak mencoba maju, reset semuanya
+    rescueTick = 0;
+    if (bot.entity) lastRescuePos = bot.entity.position.clone();
   }
-  
-  posisiTerakhir = posisiSekarang.clone();
 });
